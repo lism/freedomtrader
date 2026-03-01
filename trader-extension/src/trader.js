@@ -10,7 +10,9 @@ const DEFAULT_TIP_RATE = 0;
 // FreedomRouter (ERC1967 Proxy)
 const FREEDOM_ROUTER = '0x87083948E696c19B1CE756dd6995D4a615a7f2c3';
 const TOKEN_MANAGER_V2 = '0x5c952063c7fc8610FFDB798152D69F0B9550762b';
+const HELPER3 = '0xF251F83e40a78868FcfA3FA4599Dad6494E46034';
 const WBNB = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';
+const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
 
 // ABI
 const ERC20_ABI = [
@@ -56,13 +58,22 @@ const ROUTER_ABI = [
         { name: 'mode', type: 'uint256' },
         { name: 'isInternal', type: 'bool' },
         { name: 'tradingHalt', type: 'bool' },
+        { name: 'tmVersion', type: 'uint256' },
+        { name: 'tmAddress', type: 'address' },
+        { name: 'tmQuote', type: 'address' },
         { name: 'tmStatus', type: 'uint256' },
         { name: 'tmFunds', type: 'uint256' },
+        { name: 'tmMaxFunds', type: 'uint256' },
         { name: 'tmOffers', type: 'uint256' },
+        { name: 'tmMaxOffers', type: 'uint256' },
         { name: 'tmLastPrice', type: 'uint256' },
-        { name: 'tmMaxRaising', type: 'uint256' },
         { name: 'tmLaunchTime', type: 'uint256' },
+        { name: 'tmTradingFeeRate', type: 'uint256' },
+        { name: 'tmLiquidityAdded', type: 'bool' },
+        { name: 'isTaxToken', type: 'bool' },
+        { name: 'taxFeeRate', type: 'uint256' },
         { name: 'pair', type: 'address' },
+        { name: 'quoteToken', type: 'address' },
         { name: 'pairReserve0', type: 'uint256' },
         { name: 'pairReserve1', type: 'uint256' },
         { name: 'hasLiquidity', type: 'bool' }
@@ -311,11 +322,15 @@ async function detectToken(addr) {
     lpInfo = {
       hasLP: hasPool,
       isInternal: info.isInternal,
+      tmQuote: info.tmQuote,
       reserveBNB: info.isInternal ? info.tmFunds : info.pairReserve0,
       reserveToken: info.isInternal ? info.tmOffers : info.pairReserve1,
       tmFunds: info.tmFunds,
+      tmMaxFunds: info.tmMaxFunds,
       tmOffers: info.tmOffers,
       pair: info.pair,
+      isTaxToken: info.isTaxToken,
+      taxFeeRate: info.taxFeeRate,
     };
 
     if (hasPool) {
@@ -362,6 +377,14 @@ function showLPInfo(info) {
 
 // ==================== 交易（统一走 FreedomRouter） ====================
 
+// 内盘 BNB 计价 → TM_V2, 内盘 ERC20 计价 → Helper3, 外盘 → Router
+function getSellApproveTarget() {
+  if (lpInfo.isInternal) {
+    return (!lpInfo.tmQuote || lpInfo.tmQuote === ZERO_ADDR) ? TOKEN_MANAGER_V2 : HELPER3;
+  }
+  return FREEDOM_ROUTER;
+}
+
 function getTipRate() {
   const raw = (config.tipRate != null && config.tipRate !== '') ? Number(config.tipRate) : DEFAULT_TIP_RATE;
   const pct = Math.max(0, Math.min(5, raw));
@@ -388,7 +411,7 @@ async function buy(walletId, tokenAddr, amountStr, gasPrice) {
   const txHash = await wc.client.writeContract({
     address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'buy',
     args: [tokenAddr, 0n, deadline, tipRate],
-    value: amt, gas: 500000n, gasPrice: parseUnits(gasPrice.toString(), 9)
+    value: amt, gas: 800000n, gasPrice: parseUnits(gasPrice.toString(), 9)
   });
 
   const tSent = performance.now();
@@ -400,26 +423,16 @@ async function buy(walletId, tokenAddr, amountStr, gasPrice) {
   if (receipt.status !== 'success') throw new Error('交易失败: ' + txHash);
   console.log(`[BUY] ✓ 确认 | 等待: ${((tConfirm - tSent) / 1000).toFixed(2)}s | 总计: ${((tConfirm - t0) / 1000).toFixed(2)}s`);
 
-  // 内盘买入后自动 approve 给 TM_V2（方便后续卖出）
-  if (lpInfo.isInternal) {
-    try {
-      const approveTx = await wc.client.writeContract({
-        address: tokenAddr, abi: ERC20_ABI, functionName: 'approve',
-        args: [TOKEN_MANAGER_V2, BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')],
-        gas: 150000n, gasPrice: parseUnits(gasPrice.toString(), 9)
-      });
-      console.log('[BUY] 自动 approve 给 TM_V2:', approveTx);
-    } catch (e) { console.warn('[BUY] 自动 approve 失败:', e.message); }
-  } else {
-    try {
-      const approveTx = await wc.client.writeContract({
-        address: tokenAddr, abi: ERC20_ABI, functionName: 'approve',
-        args: [FREEDOM_ROUTER, BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')],
-        gas: 150000n, gasPrice: parseUnits(gasPrice.toString(), 9)
-      });
-      console.log('[BUY] 自动 approve 给 Router:', approveTx);
-    } catch (e) { console.warn('[BUY] 自动 approve 失败:', e.message); }
-  }
+  // 买入后自动 approve（方便后续卖出）
+  const sellTarget = getSellApproveTarget();
+  try {
+    const approveTx = await wc.client.writeContract({
+      address: tokenAddr, abi: ERC20_ABI, functionName: 'approve',
+      args: [sellTarget, BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')],
+      gas: 150000n, gasPrice: parseUnits(gasPrice.toString(), 9)
+    });
+    console.log('[BUY] 自动 approve 给', sellTarget, ':', approveTx);
+  } catch (e) { console.warn('[BUY] 自动 approve 失败:', e.message); }
 
   return { txHash, sendMs: tSent - t0, confirmMs: tConfirm - tSent, totalMs: tConfirm - t0 };
 }
@@ -439,14 +452,13 @@ async function sell(walletId, tokenAddr, amountStr, gasPrice) {
   });
   if (balance < amt) throw new Error('代币余额不足');
 
-  // 内盘: approve 给 TM_V2; 外盘: approve 给 Router Proxy
-  const approveTarget = lpInfo.isInternal ? TOKEN_MANAGER_V2 : FREEDOM_ROUTER;
+  const approveTarget = getSellApproveTarget();
   const allowance = await publicClient.readContract({
     address: tokenAddr, abi: ERC20_ABI, functionName: 'allowance', args: [wc.account.address, approveTarget]
   });
 
   if (allowance < amt) {
-    console.log('[SELL] approve 给', lpInfo.isInternal ? 'TM_V2' : 'Router');
+    console.log('[SELL] approve 给', approveTarget);
     const approveTx = await wc.client.writeContract({
       address: tokenAddr, abi: ERC20_ABI, functionName: 'approve',
       args: [approveTarget, BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')],
@@ -461,7 +473,7 @@ async function sell(walletId, tokenAddr, amountStr, gasPrice) {
   const txHash = await wc.client.writeContract({
     address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'sell',
     args: [tokenAddr, amt, 0n, deadline, tipRate],
-    gas: 500000n, gasPrice: parseUnits(gasPrice.toString(), 9)
+    gas: 800000n, gasPrice: parseUnits(gasPrice.toString(), 9)
   });
 
   const tSent = performance.now();
