@@ -128,7 +128,7 @@
       <div id="addPanel" class="add-panel" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #222;">
         <div class="input-row">
           <input id="walletName" type="text" placeholder="钱包名称 (可选)" style="flex: 0 0 120px;">
-          <input id="privateKey" type="text" placeholder="私钥">
+          <input id="privateKey" type="password" placeholder="私钥">
         </div>
         <div id="addressPreview" class="address-preview"></div>
         <div style="display: flex; gap: 8px; margin-top: 10px;">
@@ -166,7 +166,7 @@
       </div>
       <div class="form-group">
         <label class="info-label">小费比例（0–1%）</label>
-        <input id="tipRate" type="number" min="0" max="1" step="0.01" placeholder="0" style="width:100%;padding:8px;">
+        <input id="tipRate" type="number" min="0" max="5" step="0.01" placeholder="0" style="width:100%;padding:8px;">
       </div>
       <button id="saveTipBtn" class="btn btn-primary btn-small">保存小费设置</button>
     </div>

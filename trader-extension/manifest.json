@@ -2,11 +2,10 @@
   "manifest_version": 3,
   "name": "Freedom Trader",
   "version": "1.0.0",
-  "description": "免费 BSC 土狗交易终端 - 多钱包批量交易，自定义滑点，小费自愿",
+  "description": "免费 BSC DeFi 聚合交易终端 - 多钱包批量交易，自定义滑点，小费自愿",
+  "minimum_chrome_version": "114",
   "permissions": [
     "storage",
-    "clipboardRead",
-    "downloads",
     "sidePanel",
     "tabs"
   ],

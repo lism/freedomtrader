@@ -6,6 +6,7 @@ import { bsc } from 'viem/chains';
 import { decryptPrivateKey, isEncrypted, hasPassword, isUnlocked, unlock } from './crypto.js';
 
 const DEFAULT_TIP_RATE = 0;
+const DEFAULT_RPC = 'https://bsc-dataseed.bnbchain.org';
 
 // FreedomRouter (ERC1967 Proxy)
 const FREEDOM_ROUTER = '0x87083948E696c19B1CE756dd6995D4a615a7f2c3';
@@ -101,6 +102,12 @@ let walletBalances = new Map();
 let tokenBalances = new Map();
 
 const $ = id => document.getElementById(id);
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
 
 function isValidAddress(addr) {
   return /^0x[a-fA-F0-9]{40}$/.test(addr);
@@ -203,8 +210,8 @@ async function initAfterUnlock() {
   $('noConfig').style.display = 'none';
   $('tradeUI').style.display = 'block';
 
-  const rpcUrl = (config.rpcUrl || '').trim();
-  publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl || 'https://rpc-not-configured.invalid') });
+  const rpcUrl = (config.rpcUrl || '').trim() || DEFAULT_RPC;
+  publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
 
   await initWalletClients();
   if (config.slippage) { $('slippage').value = config.slippage; updateSlippageBtn(config.slippage); }
@@ -217,14 +224,14 @@ async function initAfterUnlock() {
 
 async function initWalletClients() {
   walletClients.clear();
-  const rpcUrl = (config.rpcUrl || '').trim();
+  const rpcUrl = (config.rpcUrl || '').trim() || DEFAULT_RPC;
   for (const wallet of wallets) {
     try {
       let key = wallet.encryptedKey;
       if (isEncrypted(key)) { key = await decryptPrivateKey(key); if (!key) continue; }
       key = key.startsWith('0x') ? key : '0x' + key;
       const account = privateKeyToAccount(key);
-      const client = createWalletClient({ chain: bsc, transport: http(rpcUrl || 'https://rpc-not-configured.invalid'), account });
+      const client = createWalletClient({ chain: bsc, transport: http(rpcUrl), account });
       walletClients.set(wallet.id, { client, account });
     } catch (e) { console.error('初始化钱包失败:', wallet.name, e); }
   }
@@ -237,7 +244,7 @@ function renderWalletSelector() {
     const hasClient = walletClients.has(w.id);
     return `<div class="wallet-chip ${isActive ? 'active' : ''} ${!hasClient ? 'error' : ''}" data-id="${w.id}">
       <input type="checkbox" class="wallet-check" data-id="${w.id}" ${isActive ? 'checked' : ''} ${!hasClient ? 'disabled' : ''}>
-      <span>${w.name}</span></div>`;
+      <span>${escapeHtml(w.name)}</span></div>`;
   }).join('');
 
   container.querySelectorAll('.wallet-check').forEach(cb => {
@@ -263,19 +270,18 @@ async function loadBalances() {
     let totalBNB = 0n;
     const balances = [];
     walletBalances.clear();
-    for (const id of activeWalletIds) {
-      const wc = walletClients.get(id);
-      if (!wc) continue;
-      const bal = await publicClient.getBalance({ address: wc.account.address });
-      walletBalances.set(id, bal);
-      totalBNB += bal;
-      balances.push({ name: wallets.find(w => w.id === id)?.name || id, balance: bal, address: wc.account.address });
-    }
+    const activeEntries = activeWalletIds.map(id => ({ id, wc: walletClients.get(id) })).filter(e => e.wc);
+    const bals = await Promise.all(activeEntries.map(e => publicClient.getBalance({ address: e.wc.account.address }).catch(() => 0n)));
+    activeEntries.forEach((e, i) => {
+      walletBalances.set(e.id, bals[i]);
+      totalBNB += bals[i];
+      balances.push({ name: wallets.find(w => w.id === e.id)?.name || e.id, balance: bals[i], address: e.wc.account.address });
+    });
     $('bnbBalance').textContent = parseFloat(formatUnits(totalBNB, 18)).toFixed(4);
     $('walletCount').textContent = `${activeWalletIds.length}/${wallets.length}`;
     if (balances.length > 0) {
       $('balanceDetails').innerHTML = balances.map(b =>
-        `<div class="bal-row"><span>${b.name}</span><span>${parseFloat(formatUnits(b.balance, 18)).toFixed(4)} BNB</span></div>`
+        `<div class="bal-row"><span>${escapeHtml(b.name)}</span><span>${parseFloat(formatUnits(b.balance, 18)).toFixed(4)} BNB</span></div>`
       ).join('');
     }
     updateBalanceHint();
@@ -308,16 +314,16 @@ async function detectToken(addr) {
       args: [addr, userAddr]
     });
 
-    // 汇总所有选中钱包的代币余额
     let totalBalance = 0n;
     tokenBalances.clear();
-    for (const id of activeWalletIds) {
-      const wc = walletClients.get(id);
-      if (!wc) continue;
-      const bal = await publicClient.readContract({ address: addr, abi: ERC20_ABI, functionName: 'balanceOf', args: [wc.account.address] }).catch(() => 0n);
-      tokenBalances.set(id, bal);
-      totalBalance += bal;
-    }
+    const tokenEntries = activeWalletIds.map(id => ({ id, wc: walletClients.get(id) })).filter(e => e.wc);
+    const tokenBals = await Promise.all(tokenEntries.map(e =>
+      publicClient.readContract({ address: addr, abi: ERC20_ABI, functionName: 'balanceOf', args: [e.wc.account.address] }).catch(() => 0n)
+    ));
+    tokenEntries.forEach((e, i) => {
+      tokenBalances.set(e.id, tokenBals[i]);
+      totalBalance += tokenBals[i];
+    });
 
     tokenInfo = { decimals: info.decimals, symbol: info.symbol || '???', balance: totalBalance, address: addr };
     $('tokenBalanceDisplay').textContent = parseFloat(formatUnits(totalBalance, info.decimals)).toFixed(4);
@@ -428,21 +434,33 @@ async function refreshTipConfig() {
   if (c.tipRate != null) config.tipRate = c.tipRate;
 }
 
+function calcAmountOutMin(amountIn, reserveIn, reserveOut, decimalsOut, slippage) {
+  if (reserveIn <= 0n || reserveOut <= 0n) {
+    console.warn('[滑点] 储备为零，跳过本地滑点保护，由合约处理');
+    return 0n;
+  }
+  const amountOut = (amountIn * reserveOut) / (reserveIn + amountIn);
+  const slipBps = BigInt(Math.floor((100 - slippage) * 100));
+  return (amountOut * slipBps) / 10000n;
+}
+
 async function buy(walletId, tokenAddr, amountStr, gasPrice) {
   const wc = walletClients.get(walletId);
   if (!wc) throw new Error('钱包未初始化');
   await refreshTipConfig();
 
   const amt = parseUnits(amountStr, 18);
-  const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200);
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + 120);
   const tipRate = getTipRate();
+  const slippage = parseFloat($('slippage')?.value) || 15;
+  const amountOutMin = calcAmountOutMin(amt, lpInfo.reserveBNB, lpInfo.reserveToken, tokenInfo.decimals, slippage);
 
   const t0 = performance.now();
   console.log('[BUY] token:', tokenAddr, 'amount:', amountStr, 'BNB, tipRate:', tipRate.toString());
 
   const txHash = await wc.client.writeContract({
     address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'buy',
-    args: [tokenAddr, 0n, deadline, tipRate],
+    args: [tokenAddr, amountOutMin, deadline, tipRate],
     value: amt, gas: 800000n, gasPrice: parseUnits(gasPrice.toString(), 9)
   });
 
@@ -481,8 +499,10 @@ async function sell(walletId, tokenAddr, amountStr, gasPrice) {
     amt = (amt / GW) * GW;
   }
   if (amt <= 0n) throw new Error('数量太小');
-  const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200);
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + 120);
   const tipRate = getTipRate();
+  const slippage = parseFloat($('slippage')?.value) || 15;
+  const amountOutMin = calcAmountOutMin(amt, lpInfo.reserveToken, lpInfo.reserveBNB, 18, slippage);
 
   // 检查余额
   const balance = await publicClient.readContract({
@@ -510,7 +530,7 @@ async function sell(walletId, tokenAddr, amountStr, gasPrice) {
 
   const txHash = await wc.client.writeContract({
     address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'sell',
-    args: [tokenAddr, amt, 0n, deadline, tipRate],
+    args: [tokenAddr, amt, amountOutMin, deadline, tipRate],
     gas: 800000n, gasPrice: parseUnits(gasPrice.toString(), 9)
   });
 
@@ -597,6 +617,7 @@ function updatePrice() {
 
   const slip = parseFloat($('slippage').value) || 15;
   const walletCount = activeWalletIds.filter(id => walletClients.has(id)).length;
+  if (walletCount === 0) { if (div) div.style.display = 'none'; return; }
   const amountPerWallet = amount / walletCount;
 
   try {
@@ -627,9 +648,7 @@ function setupEvents() {
   const slippageInput = el('slippage');
 
   document.addEventListener('click', (e) => {
-    // span 类可点击元素（粘贴、自定义等）
     const clickedId = e.target.id;
-    if (clickedId === 'pasteBtn') { e.preventDefault(); pasteAddress(); return; }
     if (clickedId === 'editQuickBtn') { e.preventDefault(); toggleQuickEdit(true); return; }
 
     const t = e.target.closest && e.target.closest('button');
@@ -657,10 +676,6 @@ function setupEvents() {
 
   const gasInput = el('gasPriceInput');
   if (gasInput) gasInput.oninput = () => { chrome.storage.local.set({ gasPrice: gasInput.value }); };
-}
-
-async function pasteAddress() {
-  try { const txt = await navigator.clipboard.readText(); const input = $('tokenAddress'); if (input) input.value = txt; detectToken(txt.trim()); } catch (err) { console.warn('粘贴失败', err); }
 }
 
 function switchMode(mode) {

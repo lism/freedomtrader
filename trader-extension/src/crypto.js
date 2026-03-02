@@ -25,7 +25,7 @@ export async function unlock(password) {
 }
 
 export function lock() {
-  send('lock');
+  return send('lock');
 }
 
 export async function isUnlocked() {
@@ -50,18 +50,19 @@ export async function setLockDuration(minutes) {
 export async function encryptPrivateKey(privateKey, password) {
   const res = await send('encrypt', { plaintext: privateKey, password });
   if (!res.result && res.error) throw new Error(res.error);
-  return res.result;
+  return 'enc:' + res.result;
 }
 
-export async function decryptPrivateKey(encryptedBase64) {
-  if (!encryptedBase64) return null;
-  const res = await send('decrypt', { ciphertext: encryptedBase64 });
+export async function decryptPrivateKey(encryptedValue) {
+  if (!encryptedValue) return null;
+  const ciphertext = encryptedValue.startsWith('enc:') ? encryptedValue.slice(4) : encryptedValue;
+  const res = await send('decrypt', { ciphertext });
   return res.result;
 }
 
 export function isEncrypted(value) {
   if (!value) return false;
-  return value.length > 100;
+  return value.startsWith('enc:');
 }
 
 export async function changePassword(oldPassword, newPassword) {

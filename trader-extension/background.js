@@ -10,13 +10,19 @@ const PW_HASH_KEY = 'ft_pw_hash';
 let cachedKey = null;
 let unlockTime = 0;
 
+function uint8ToBase64(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
 async function getSalt() {
   const stored = await chrome.storage.local.get([SALT_KEY]);
   if (stored[SALT_KEY]) {
     return Uint8Array.from(atob(stored[SALT_KEY]), c => c.charCodeAt(0));
   }
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  await chrome.storage.local.set({ [SALT_KEY]: btoa(String.fromCharCode(...salt)) });
+  await chrome.storage.local.set({ [SALT_KEY]: uint8ToBase64(salt) });
   return salt;
 }
 
@@ -34,11 +40,14 @@ async function deriveKey(password) {
 }
 
 async function hashPassword(password) {
-  const enc = new TextEncoder();
   const salt = await getSalt();
-  const data = new Uint8Array([...salt, ...enc.encode(password)]);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return btoa(String.fromCharCode(...new Uint8Array(hash)));
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    keyMaterial, 256
+  );
+  return uint8ToBase64(new Uint8Array(bits));
 }
 
 async function checkExpiry() {
@@ -111,7 +120,7 @@ const handlers = {
     const combined = new Uint8Array(iv.length + encrypted.byteLength);
     combined.set(iv);
     combined.set(new Uint8Array(encrypted), iv.length);
-    return { result: btoa(String.fromCharCode(...combined)) };
+    return { result: uint8ToBase64(combined) };
   },
 
   async decrypt({ ciphertext }) {
@@ -136,8 +145,9 @@ const handlers = {
     const wallets = stored.wallets || [];
 
     for (const w of wallets) {
-      if (!w.encryptedKey || w.encryptedKey.length <= 100) continue;
-      const combined = Uint8Array.from(atob(w.encryptedKey), c => c.charCodeAt(0));
+      if (!w.encryptedKey || !w.encryptedKey.startsWith('enc:')) continue;
+      const raw = w.encryptedKey.slice(4);
+      const combined = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
       const iv = combined.slice(0, 12);
       const enc = combined.slice(12);
       let plain;
@@ -152,7 +162,7 @@ const handlers = {
       const newCombined = new Uint8Array(newIv.length + newEnc.byteLength);
       newCombined.set(newIv);
       newCombined.set(new Uint8Array(newEnc), newIv.length);
-      w.encryptedKey = btoa(String.fromCharCode(...newCombined));
+      w.encryptedKey = 'enc:' + uint8ToBase64(newCombined);
     }
 
     await chrome.storage.local.set({ wallets });
@@ -166,19 +176,16 @@ const handlers = {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'CONTRACT_DETECTED') return;
+  if (sender.id !== chrome.runtime.id) return;
 
   const handler = handlers[message.action];
   if (handler) {
     handler(message).then(sendResponse).catch(e => sendResponse({ error: e.message }));
-    return true; // async response
+    return true;
   }
 });
 
 // ==================== 侧边栏 & 合约识别 ====================
-
-chrome.action.onClicked.addListener((tab) => {
-  chrome.sidePanel.open({ tabId: tab.id });
-});
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 

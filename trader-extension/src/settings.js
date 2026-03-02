@@ -8,8 +8,13 @@ import {
 
 const $ = id => document.getElementById(id);
 
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 let wallets = [];
-let editingId = null;
 let unlocked = false;
 
 // 加载配置
@@ -85,7 +90,7 @@ async function handleUnlock() {
 }
 
 async function handleLock() {
-  lock();
+  await lock();
   unlocked = false;
   showToast('已锁定', 'success');
   await initPasswordUI();
@@ -141,8 +146,8 @@ function renderWalletList(activeIds = []) {
         <input type="checkbox" class="wallet-checkbox" data-id="${w.id}"
           ${activeIds.includes(w.id) ? 'checked' : ''}>
         <div class="wallet-details">
-          <div class="wallet-name">${w.name}</div>
-          <div class="wallet-address">${w.address}</div>
+          <div class="wallet-name">${escapeHtml(w.name)}</div>
+          <div class="wallet-address">${escapeHtml(w.address)}</div>
         </div>
       </div>
       <div class="wallet-actions">
@@ -340,6 +345,10 @@ function updateAddressPreview(privateKey) {
 // 保存RPC
 async function saveRpc() {
   const rpcUrl = $('rpcUrl').value.trim();
+  if (rpcUrl && !/^https?:\/\/.+/.test(rpcUrl)) {
+    showToast('RPC URL 格式错误，需以 http:// 或 https:// 开头', 'error');
+    return;
+  }
   await chrome.storage.local.set({ rpcUrl });
   showToast('RPC已保存', 'success');
 }
@@ -347,7 +356,7 @@ async function saveRpc() {
 // 保存小费设置
 async function saveTip() {
   const raw = $('tipRate').value.trim();
-  const tipRate = raw === '' ? 0 : Math.max(0, Math.min(1, parseFloat(raw)));
+  const tipRate = raw === '' ? 0 : Math.max(0, Math.min(5, parseFloat(raw)));
   await chrome.storage.local.set({ tipRate });
   showToast('小费设置已保存', 'success');
 }
