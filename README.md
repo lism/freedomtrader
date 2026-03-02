@@ -27,7 +27,7 @@
 | RPC | URL | 说明 |
 |-----|-----|------|
 | 48 Club | `https://rpc.48.club` | 隐私防夹，交易不进公开 mempool |
-| BlockRazor | `https://debot.bsc.blockrazor.xyz` | 隐私防夹 |
+| Debot x BlockRazor | `https://debot.bsc.blockrazor.xyz` | 隐私防夹 |
 | BSC 官方 | `https://bsc-dataseed.binance.org` | 公共 RPC，无隐私保护 |
 | BSC 官方 2 | `https://bsc-dataseed1.defibit.io` | 公共 RPC 备用 |
 
