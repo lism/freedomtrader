@@ -2,575 +2,558 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Freedom Trader - BSC 土狗交易终端</title>
+  <title>Freedom Trader</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0a0a0f;
+      --card: #12121a;
+      --card-border: #1e1e2e;
+      --surface: #16161f;
+      --text: #e0e0e0;
+      --text2: #777;
+      --text3: #444;
+      --accent: #00d4aa;
+      --accent2: #00ff88;
+      --yellow: #f0b90b;
+      --red: #ff4d6a;
+      --red-soft: rgba(255,77,106,0.12);
+      --green-soft: rgba(0,212,170,0.12);
+      --yellow-soft: rgba(240,185,11,0.12);
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
     body {
-      font-family: 'Segoe UI', -apple-system, sans-serif;
-      background: #0d0d0d;
+      font-family: -apple-system, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
-      color: #fff;
-      width: 100%;
+      -webkit-font-smoothing: antialiased;
     }
+
+    /* ===== Header ===== */
     .header {
-      background: linear-gradient(90deg, #1a1a2e, #16213e);
-      padding: 10px 12px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 2px solid #00d4aa;
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      padding: 10px 14px;
+      background: linear-gradient(180deg, #13131f 0%, var(--bg) 100%);
+      border-bottom: 1px solid var(--card-border);
+      position: sticky; top: 0; z-index: 100;
     }
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .logo-icon { font-size: 20px; }
+    .logo { display:flex; align-items:center; gap:7px; }
+    .logo-icon { font-size:18px; }
     .logo-text {
-      font-size: 16px;
-      font-weight: 800;
-      background: linear-gradient(90deg, #00d4aa, #00ff88);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      font-size: 15px; font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     }
-    .logo-sub {
-      font-size: 9px;
-      color: #666;
-      margin-left: 6px;
+    .logo-ver { font-size:9px; color:var(--text3); font-weight:500; }
+    .header-right { display:flex; align-items:center; gap:6px; }
+    .chip {
+      font-size: 10px; font-weight: 600; padding: 3px 8px;
+      border-radius: 20px; line-height: 1;
     }
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    .chip-accent { background: var(--green-soft); color: var(--accent); }
+    .btn-icon {
+      background: var(--surface); border: 1px solid var(--card-border);
+      color: var(--text2); cursor: pointer; font-size: 13px;
+      width: 30px; height: 30px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .15s;
     }
-    .wallet-count {
-      font-size: 10px;
-      color: #00d4aa;
-      background: rgba(0, 212, 170, 0.15);
-      padding: 3px 6px;
-      border-radius: 4px;
-    }
-    .settings-btn {
-      background: rgba(255,255,255,0.1);
-      border: none;
-      color: #888;
-      cursor: pointer;
-      font-size: 14px;
-      padding: 4px 8px;
-      border-radius: 6px;
-    }
-    .settings-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+    .btn-icon:hover { background: var(--card-border); color: var(--text); }
 
-    .main {
+    /* ===== Main ===== */
+    .main { padding: 10px 12px 20px; display:flex; flex-direction:column; gap:10px; }
+
+    /* ===== Cards ===== */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
       padding: 12px;
     }
+    .card-label {
+      font-size: 10px; font-weight: 600; color: var(--text3);
+      text-transform: uppercase; letter-spacing: .8px;
+      margin-bottom: 8px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .card-label .right { color: var(--accent); font-weight: 500; }
 
-    /* 钱包选择器 */
-    .wallet-selector-card {
-      background: #151515;
-      border-radius: 12px;
-      padding: 12px;
-      margin-bottom: 12px;
-      border: 1px solid #252525;
-    }
-    .wallet-selector-title {
-      font-size: 11px;
-      color: #888;
-      margin-bottom: 10px;
-      display: flex;
-      justify-content: space-between;
-    }
-    .wallet-selector-title span { color: #00d4aa; }
-    .wallet-chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
+    /* ===== Wallet Chips ===== */
+    .wallet-chips { display:flex; flex-wrap:wrap; gap:5px; }
     .wallet-chip {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 6px 10px;
-      background: #1a1a1a;
-      border: 1px solid #333;
-      border-radius: 16px;
-      cursor: pointer;
-      font-size: 11px;
-      transition: all 0.2s;
+      display: flex; align-items: center; gap: 4px;
+      padding: 5px 10px; background: var(--surface);
+      border: 1px solid var(--card-border); border-radius: 20px;
+      cursor: pointer; font-size: 11px; font-weight: 500;
+      transition: all .15s; color: var(--text2);
     }
-    .wallet-chip:hover { border-color: #555; }
+    .wallet-chip:hover { border-color: var(--text3); color: var(--text); }
     .wallet-chip.active {
-      border-color: #00d4aa;
-      background: rgba(0, 212, 170, 0.1);
+      border-color: var(--accent); color: var(--accent);
+      background: var(--green-soft);
     }
-    .wallet-chip.error {
-      border-color: #ff6b6b;
-      opacity: 0.5;
-    }
-    .wallet-chip-name { color: #fff; }
-    .wallet-check {
-      width: 14px;
-      height: 14px;
-      accent-color: #00d4aa;
-    }
+    .wallet-chip.error { border-color: var(--red); opacity:.4; }
+    .wallet-check { width:12px; height:12px; accent-color:var(--accent); }
 
-    .balance-card {
-      background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 12px;
-      border: 1px solid rgba(0, 212, 170, 0.2);
+    /* ===== Balance ===== */
+    .balance-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 0;
     }
-    .balance-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+    .bal-cell {
+      text-align: center; padding: 10px 0;
     }
-    .balance-item {
-      text-align: center;
-      flex: 1;
+    .bal-cell:first-child { border-right: 1px solid var(--card-border); }
+    .bal-label { font-size:9px; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; }
+    .bal-value {
+      font-size: 22px; font-weight: 700; margin-top: 2px;
+      font-variant-numeric: tabular-nums;
     }
-    .balance-item:first-child {
-      border-right: 1px solid rgba(255,255,255,0.1);
+    .bal-value.bnb { color: var(--yellow); }
+    .bal-value.token { color: var(--accent); }
+    .bal-details {
+      border-top: 1px solid var(--card-border);
+      margin-top: 8px; padding-top: 8px;
+      max-height: 100px; overflow-y: auto;
     }
-    .balance-label {
-      font-size: 10px;
-      color: #666;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+    .bal-details::-webkit-scrollbar { width:3px; }
+    .bal-details::-webkit-scrollbar-thumb { background:var(--card-border); border-radius:2px; }
+    .bal-row {
+      display:flex; justify-content:space-between;
+      font-size:11px; padding:3px 4px; color:var(--text3);
     }
-    .balance-value {
-      font-size: 20px;
-      font-weight: 700;
-      color: #00d4aa;
-      margin-top: 4px;
-    }
-    .balance-value.bnb-value { color: #f0b90b; }
+    .bal-row span:last-child { color:var(--yellow); font-variant-numeric:tabular-nums; }
 
-    .balance-details {
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid rgba(255,255,255,0.1);
-      max-height: 120px;
-      overflow-y: auto;
-    }
-    .balance-row-item {
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      padding: 4px 0;
-      color: #888;
-    }
-    .balance-row-item span:last-child { color: #f0b90b; }
-
-    .trade-card {
-      background: #151515;
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 12px;
-      border: 1px solid #252525;
-    }
-    .card-title {
-      font-size: 11px;
-      color: #00d4aa;
-      margin-bottom: 12px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .tabs {
-      display: flex;
-      margin-bottom: 16px;
-      gap: 8px;
-    }
+    /* ===== Trade Card ===== */
+    .tabs { display:flex; gap:6px; margin-bottom:12px; }
     .tab {
-      flex: 1;
-      padding: 10px;
-      text-align: center;
-      border: none;
-      background: #1a1a1a;
-      color: #666;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      border-radius: 8px;
-      transition: all 0.2s;
-      text-transform: uppercase;
+      flex:1; padding:9px; text-align:center;
+      border:1px solid var(--card-border); background:var(--surface);
+      color:var(--text3); font-size:12px; font-weight:700;
+      cursor:pointer; border-radius:var(--radius-sm);
+      transition: all .15s;
     }
+    .tab:hover:not(.active) { border-color:var(--text3); color:var(--text2); }
     .tab.buy.active {
-      background: linear-gradient(135deg, #00d4aa, #00ff88);
-      color: #000;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color:#000; border-color:transparent;
     }
     .tab.sell.active {
-      background: linear-gradient(135deg, #ff6b6b, #ff4757);
-      color: #fff;
+      background: linear-gradient(135deg, #ff4d6a, #ff3050);
+      color:#fff; border-color:transparent;
     }
-    .tab:hover:not(.active) { background: #252525; color: #fff; }
 
-    .form-group { margin-bottom: 12px; }
-    label {
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      color: #666;
-      margin-bottom: 6px;
+    /* ===== Form ===== */
+    .form-group { margin-bottom:10px; }
+    .form-label {
+      display:flex; justify-content:space-between;
+      font-size:10px; color:var(--text3); margin-bottom:5px;
+      font-weight:500;
     }
-    label span { color: #00d4aa; cursor: pointer; }
-    input, select {
-      width: 100%;
-      padding: 12px;
-      border: 1px solid #333;
-      border-radius: 8px;
-      background: #1a1a1a;
-      color: #fff;
-      font-size: 14px;
+    .form-label .action {
+      color:var(--accent); cursor:pointer; font-weight:600;
     }
-    input:focus, select:focus { outline: none; border-color: #00d4aa; }
-    input::placeholder { color: #444; }
-    .input-group {
-      display: flex;
-      gap: 8px;
+    .form-label .action:hover { text-decoration:underline; }
+    .form-input {
+      width:100%; padding:10px 12px;
+      border:1px solid var(--card-border); border-radius:var(--radius-sm);
+      background:var(--surface); color:var(--text);
+      font-size:13px; transition: border-color .15s;
     }
-    .input-group input { flex: 1; }
-    .input-group button {
-      padding: 0 14px;
-      background: #252525;
-      border: 1px solid #333;
-      border-radius: 8px;
-      color: #00d4aa;
-      font-weight: 700;
-      cursor: pointer;
-      font-size: 11px;
+    .form-input:focus { outline:none; border-color:var(--accent); }
+    .form-input::placeholder { color:var(--text3); }
+    .input-row { display:flex; gap:6px; }
+    .input-row .form-input { flex:1; }
+    .btn-max {
+      padding:0 12px; background:var(--surface);
+      border:1px solid var(--card-border); border-radius:var(--radius-sm);
+      color:var(--accent); font-weight:700; font-size:10px;
+      cursor:pointer; letter-spacing:.5px; transition: all .15s;
     }
-    .input-group button:hover { background: #333; }
+    .btn-max:hover { background:var(--card-border); }
 
-    .quick-row {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 12px;
+    /* ===== Token Badge ===== */
+    .token-badge {
+      display:none; align-items:center; gap:6px;
+      margin-top:6px; animation: fadeIn .2s ease;
     }
+    .token-badge.show { display:flex; }
+    .token-badge .sym {
+      font-size:20px; font-weight:900; padding:4px 14px;
+      border-radius:var(--radius-sm);
+      background: linear-gradient(135deg, var(--green-soft), rgba(0,255,136,0.08));
+      border:1px solid rgba(0,212,170,0.3);
+      color:#00ffaa; letter-spacing:.5px;
+      text-transform:uppercase;
+      text-shadow: 0 0 10px rgba(0,255,170,0.3);
+    }
+    .token-badge .tag {
+      font-size:9px; font-weight:700; padding:3px 7px;
+      border-radius:4px; letter-spacing:.3px;
+    }
+    .tag-internal { background:var(--red-soft); border:1px solid rgba(255,77,106,0.25); color:var(--red); }
+    .tag-external { background:var(--yellow-soft); border:1px solid rgba(240,185,11,0.25); color:var(--yellow); }
+
+    /* ===== Quick Buttons ===== */
+    .quick-row { display:flex; gap:5px; margin-top:6px; }
     .quick-btn {
-      flex: 1;
-      padding: 8px;
-      background: #1a1a1a;
-      border: 1px solid #333;
-      border-radius: 6px;
-      color: #888;
-      font-size: 11px;
-      cursor: pointer;
+      flex:1; padding:7px 0; text-align:center;
+      background:var(--surface); border:1px solid var(--card-border);
+      border-radius:var(--radius-sm); color:var(--text3);
+      font-size:11px; font-weight:600; cursor:pointer;
+      transition: all .15s;
     }
-    .quick-btn:hover { border-color: #00d4aa; color: #00d4aa; }
-
-    .settings-row {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 12px;
+    .quick-btn:hover { border-color:var(--accent); color:var(--accent); }
+    .percent-row { display:none; gap:5px; margin-top:6px; }
+    .percent-row.show { display:flex; }
+    .pct-btn {
+      flex:1; padding:7px 0; text-align:center;
+      background:var(--red-soft); border:1px solid rgba(255,77,106,0.2);
+      border-radius:var(--radius-sm); color:var(--red);
+      font-size:11px; font-weight:700; cursor:pointer;
+      transition: all .15s;
     }
-    .setting-item { flex: 1; }
-    .setting-item label { display: block; margin-bottom: 6px; }
-    .setting-item input { padding: 8px 10px; font-size: 12px; }
+    .pct-btn:hover { background:rgba(255,77,106,0.2); border-color:var(--red); }
 
+    /* ===== LP Info ===== */
+    #lpInfo {
+      display:none;
+      background: var(--surface); border:1px solid var(--card-border);
+      border-radius:var(--radius-sm); padding:10px 12px;
+      margin-bottom:10px; font-size:11px;
+      animation: fadeIn .2s ease;
+    }
+    .lp-header { display:flex; justify-content:space-between; margin-bottom:6px; }
+    .lp-header .type { font-weight:600; }
+    .lp-header .status { font-weight:600; }
+    .lp-reserves {
+      display:flex; justify-content:space-between; align-items:flex-end;
+    }
+    .lp-res-item .lbl {
+      font-size:9px; color:var(--text3);
+      max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .lp-res-item .val { font-size:13px; font-weight:600; margin-top:1px; font-variant-numeric:tabular-nums; }
+    .lp-res-item:last-child { text-align:right; }
+    .lp-res-item:last-child .lbl { margin-left:auto; }
+
+    /* ===== Price Info ===== */
+    #priceInfo {
+      display:none;
+      background:var(--surface); border:1px solid var(--card-border);
+      border-radius:var(--radius-sm); padding:8px 12px;
+      margin-bottom:10px; font-size:11px;
+    }
+    .price-row {
+      display:flex; justify-content:space-between; padding:3px 0;
+    }
+    .price-row .lbl { color:var(--text3); }
+    .price-row .val { font-weight:600; font-family:'SF Mono',monospace; font-variant-numeric:tabular-nums; }
+    .price-row .val.est { color:var(--accent); }
+    .price-row .val.min { color:var(--yellow); }
+
+    /* ===== Settings Row ===== */
+    .settings-row { display:flex; gap:8px; margin-bottom:10px; }
+    .setting-col { flex:1; }
+    .setting-col .form-label { margin-bottom:4px; }
+    .setting-col .form-input { padding:7px 10px; font-size:12px; }
+    .slip-presets { display:flex; gap:4px; margin-bottom:5px; }
+    .slip-btn {
+      flex:1; padding:5px 0; text-align:center;
+      background:var(--surface); border:1px solid var(--card-border);
+      border-radius:4px; color:var(--text3);
+      font-size:10px; font-weight:600; cursor:pointer;
+      transition: all .15s;
+    }
+    .slip-btn.active {
+      border-color:var(--accent); color:var(--accent);
+      background:var(--green-soft);
+    }
+    .slip-btn:hover:not(.active) { border-color:var(--text3); color:var(--text2); }
+
+    /* ===== Warning ===== */
+    .warning-box {
+      display:none;
+      background:var(--yellow-soft); border:1px solid rgba(240,185,11,0.25);
+      border-radius:var(--radius-sm); padding:8px 10px;
+      font-size:10px; font-weight:500; color:var(--yellow);
+      margin-bottom:10px;
+    }
+    .warning-box.show { display:block; }
+
+    /* ===== Trade Button ===== */
     .btn-trade {
-      width: 100%;
-      padding: 14px;
-      border: none;
-      border-radius: 10px;
-      font-size: 15px;
-      font-weight: 800;
-      cursor: pointer;
-      transition: all 0.2s;
-      text-transform: uppercase;
-      letter-spacing: 1px;
+      width:100%; padding:13px; border:none;
+      border-radius:var(--radius); font-size:14px;
+      font-weight:800; cursor:pointer;
+      transition: all .2s; letter-spacing:.5px;
     }
     .btn-buy {
-      background: linear-gradient(135deg, #00d4aa, #00ff88);
-      color: #000;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color:#000;
     }
     .btn-sell {
-      background: linear-gradient(135deg, #ff6b6b, #ff4757);
-      color: #fff;
+      background: linear-gradient(135deg, #ff4d6a, #ff3050);
+      color:#fff;
     }
-    .btn-trade:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0, 212, 170, 0.3); }
-    .btn-sell:hover:not(:disabled) { box-shadow: 0 4px 20px rgba(255, 107, 107, 0.3); }
-    .btn-trade:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-trade:hover:not(:disabled) {
+      transform:translateY(-1px);
+      box-shadow: 0 6px 24px rgba(0,212,170,0.25);
+    }
+    .btn-sell:hover:not(:disabled) {
+      box-shadow: 0 6px 24px rgba(255,77,106,0.25);
+    }
+    .btn-trade:active:not(:disabled) { transform:translateY(0); }
+    .btn-trade:disabled { opacity:.4; cursor:not-allowed; transform:none; }
 
+    /* ===== Status Bar ===== */
     .status-bar {
-      padding: 10px;
-      border-radius: 8px;
-      margin-top: 12px;
-      font-size: 12px;
-      text-align: center;
-      font-family: monospace;
+      display:none;
+      padding:8px 12px; border-radius:var(--radius-sm);
+      margin-top:10px; font-size:11px;
+      text-align:center; font-family:'SF Mono',monospace;
+      font-weight:500;
     }
-    .status-bar.pending { background: rgba(255, 193, 7, 0.15); color: #ffc107; border: 1px solid rgba(255, 193, 7, 0.3); }
-    .status-bar.success { background: rgba(0, 212, 170, 0.15); color: #00d4aa; border: 1px solid rgba(0, 212, 170, 0.3); }
-    .status-bar.error { background: rgba(255, 107, 107, 0.15); color: #ff6b6b; border: 1px solid rgba(255, 107, 107, 0.3); }
+    .status-bar.pending { background:var(--yellow-soft); color:var(--yellow); border:1px solid rgba(240,185,11,0.2); }
+    .status-bar.success { background:var(--green-soft); color:var(--accent); border:1px solid rgba(0,212,170,0.2); }
+    .status-bar.error { background:var(--red-soft); color:var(--red); border:1px solid rgba(255,77,106,0.2); }
 
-    /* 顶部弹窗 Toast */
+    /* ===== Toast ===== */
     .toast {
-      position: fixed;
-      top: 8px;
-      left: 50%;
-      transform: translateX(-50%) translateY(-100px);
-      padding: 10px 16px;
-      border-radius: 8px;
-      font-size: 12px;
-      font-weight: 600;
-      z-index: 9999;
-      opacity: 0;
-      transition: all 0.3s ease;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-      pointer-events: none;
-      white-space: nowrap;
+      position:fixed; top:10px; left:50%;
+      transform:translateX(-50%) translateY(-80px);
+      padding:9px 18px; border-radius:var(--radius);
+      font-size:12px; font-weight:600; z-index:9999;
+      opacity:0; transition:all .3s ease;
+      box-shadow:0 8px 32px rgba(0,0,0,0.4);
+      pointer-events:none; white-space:nowrap;
+      backdrop-filter: blur(12px);
     }
-    .toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-    .toast.success {
-      background: linear-gradient(135deg, #00d4aa, #00ff88);
-      color: #000;
-    }
-    .toast.error {
-      background: linear-gradient(135deg, #ff6b6b, #ff4757);
-      color: #fff;
-    }
-    .toast.pending {
-      background: linear-gradient(135deg, #f0b90b, #ffc107);
-      color: #000;
-    }
+    .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+    .toast.success { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#000; }
+    .toast.error { background:linear-gradient(135deg,#ff4d6a,#ff3050); color:#fff; }
+    .toast.pending { background:linear-gradient(135deg,#f0b90b,#ffc107); color:#000; }
 
-    /* 卖出百分比按钮 */
-    .percent-row {
-      display: none;
-      gap: 6px;
-      margin-bottom: 12px;
-    }
-    .percent-row.show { display: flex; }
-    .percent-btn {
-      flex: 1;
-      padding: 8px;
-      background: rgba(255, 107, 107, 0.1);
-      border: 1px solid rgba(255, 107, 107, 0.3);
-      border-radius: 6px;
-      color: #ff6b6b;
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .percent-btn:hover {
-      background: rgba(255, 107, 107, 0.2);
-      border-color: #ff6b6b;
-    }
+    /* ===== No Config ===== */
+    .no-config { text-align:center; padding:50px 20px; }
+    .no-config .icon { font-size:40px; margin-bottom:12px; }
+    .no-config p { color:var(--text3); margin-bottom:16px; font-size:13px; }
 
-    .no-config {
-      text-align: center;
-      padding: 60px 20px;
+    /* ===== Lock Overlay ===== */
+    .lock-overlay {
+      display:none; position:fixed; inset:0;
+      background:rgba(6,6,12,0.97); z-index:9000;
+      align-items:center; justify-content:center;
+      backdrop-filter: blur(8px);
     }
-    .no-config p { color: #666; margin-bottom: 20px; }
-    .no-config .emoji { font-size: 48px; margin-bottom: 16px; }
+    .lock-box { text-align:center; max-width:280px; padding:20px; }
+    .lock-box .icon { font-size:40px; margin-bottom:14px; }
+    .lock-box .title { font-size:15px; font-weight:700; margin-bottom:6px; }
+    .lock-box .desc { font-size:11px; color:var(--text3); margin-bottom:18px; }
+    .lock-box .form-input { text-align:center; margin-bottom:10px; }
+    .lock-box .btn-trade { font-size:13px; padding:11px; }
+    .lock-box .error { font-size:11px; color:var(--red); margin-top:6px; display:none; }
+    .lock-box .btn-link {
+      margin-top:14px; padding:8px 20px;
+      border:none; border-radius:var(--radius-sm);
+      background:var(--surface); color:var(--text3);
+      font-size:12px; cursor:pointer;
+    }
+    .lock-box .btn-link:hover { color:var(--text); background:var(--card-border); }
 
-    .slippage-presets {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 8px;
+    /* ===== Fast Trade ===== */
+    .fast-trade { border-top:1px solid var(--card-border); margin-top:10px; padding-top:2px; }
+    .fast-row { display:flex; gap:5px; }
+    .fast-btn {
+      flex:1; padding:8px 0; text-align:center;
+      border:1px solid transparent; border-radius:var(--radius-sm);
+      font-size:11px; font-weight:700; cursor:pointer;
+      transition: all .15s; position:relative;
     }
-    .slippage-btn {
-      flex: 1;
-      padding: 6px;
-      background: #1a1a1a;
-      border: 1px solid #333;
-      border-radius: 4px;
-      color: #888;
-      font-size: 11px;
-      cursor: pointer;
+    .fast-btn:active:not(:disabled) { transform:scale(0.96); }
+    .fast-btn:disabled { opacity:.4; cursor:not-allowed; }
+    .fast-buy {
+      background: var(--green-soft); color:var(--accent);
+      border-color: rgba(0,212,170,0.2);
     }
-    .slippage-btn.active {
-      border-color: #00d4aa;
-      color: #00d4aa;
-      background: rgba(0, 212, 170, 0.1);
+    .fast-buy:hover:not(:disabled) { background:rgba(0,212,170,0.2); border-color:var(--accent); }
+    .fast-sell {
+      background: var(--red-soft); color:var(--red);
+      border-color: rgba(255,77,106,0.2);
     }
-    .slippage-btn:hover:not(.active) { border-color: #555; color: #fff; }
+    .fast-sell:hover:not(:disabled) { background:rgba(255,77,106,0.2); border-color:var(--red); }
+    .quick-edit { animation: fadeIn .2s ease; }
 
-    .warning-box {
-      background: rgba(255, 193, 7, 0.1);
-      border: 1px solid rgba(255, 193, 7, 0.3);
-      border-radius: 8px;
-      padding: 10px;
-      font-size: 11px;
-      color: #ffc107;
-      margin-bottom: 12px;
-      display: none;
-    }
-    .warning-box.show { display: block; }
-
-    #priceInfo {
-      background: #1a1a1a;
-      border-radius: 8px;
-      padding: 10px 12px;
-      margin-bottom: 12px;
-      font-size: 11px;
-    }
-    #lpInfo {
-      background: #1a1a1a;
-      border: 1px solid #333;
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 12px;
-      font-size: 12px;
-    }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
   </style>
 </head>
 <body>
   <div class="header">
     <div class="logo">
       <span class="logo-icon">🦅</span>
-      <span class="logo-text">Freedom Trader</span>
-      <span class="logo-sub">FT · 免费交易</span>
+      <span class="logo-text">FreedomTrader</span>
+      <span class="logo-ver">FT</span>
     </div>
     <div class="header-right">
-      <div id="walletCount" class="wallet-count">0/0</div>
-      <button id="settingsBtn" class="settings-btn">⚙️</button>
+      <div id="walletCount" class="chip chip-accent">0/0</div>
+      <button id="settingsBtn" class="btn-icon">⚙</button>
     </div>
   </div>
 
-  <!-- 顶部弹窗 -->
   <div id="toast" class="toast"></div>
 
-  <!-- 解锁遮罩层 -->
-  <div id="lockOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:9000;display:none;align-items:center;justify-content:center;">
-    <div style="text-align:center;max-width:320px;padding:20px;">
-      <div style="font-size:48px;margin-bottom:16px;">🔒</div>
-      <div id="lockTitle" style="font-size:16px;font-weight:700;margin-bottom:8px;color:#fff;">请输入密码解锁</div>
-      <div id="lockDesc" style="font-size:12px;color:#888;margin-bottom:20px;">首次使用请先在设置中设置密码</div>
+  <div id="lockOverlay" class="lock-overlay">
+    <div class="lock-box">
+      <div class="icon">🔒</div>
+      <div id="lockTitle" class="title">请输入密码解锁</div>
+      <div id="lockDesc" class="desc">首次使用请先在设置中设置密码</div>
       <div id="lockInputArea" style="display:none;">
-        <input id="lockPwInput" type="password" placeholder="输入密码" style="width:100%;padding:12px;border:1px solid #333;border-radius:8px;background:#1a1a1a;color:#fff;font-size:14px;margin-bottom:12px;text-align:center;">
-        <button id="lockUnlockBtn" style="width:100%;padding:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#00d4aa,#00ff88);color:#000;font-size:14px;font-weight:700;cursor:pointer;">解锁</button>
-        <div id="lockError" style="font-size:12px;color:#ff6b6b;margin-top:8px;display:none;"></div>
+        <input id="lockPwInput" type="password" placeholder="输入密码" class="form-input">
+        <button id="lockUnlockBtn" class="btn-trade btn-buy">解锁</button>
+        <div id="lockError" class="error"></div>
       </div>
-      <button id="lockGoSettings" style="margin-top:16px;padding:10px 24px;border:none;border-radius:8px;background:#252525;color:#888;font-size:13px;cursor:pointer;">前往设置</button>
+      <button id="lockGoSettings" class="btn-link">前往设置</button>
     </div>
   </div>
 
   <div class="main">
-    <div id="noConfig" class="no-config" style="display: none;">
-      <div class="emoji">🔐</div>
+    <div id="noConfig" class="no-config" style="display:none;">
+      <div class="icon">🔐</div>
       <p>请先在设置中添加钱包</p>
-      <button id="goSettingsBtn" class="btn-trade btn-buy" style="width: auto; padding: 12px 32px;">
-        前往设置
-      </button>
+      <button id="goSettingsBtn" class="btn-trade btn-buy" style="width:auto;padding:11px 32px;">前往设置</button>
     </div>
 
     <div id="tradeUI">
-      <!-- 钱包选择器 -->
-      <div class="wallet-selector-card">
-        <div class="wallet-selector-title">
-          <span>选择钱包 (已选 <span id="selectedCount">0</span> 个)</span>
-          <span>点击切换</span>
+      <!-- Wallets -->
+      <div class="card">
+        <div class="card-label">
+          <span>钱包 (已选 <span id="selectedCount">0</span>)</span>
+          <span class="right">点击切换</span>
         </div>
         <div id="walletSelector" class="wallet-chips"></div>
       </div>
 
-      <div class="balance-card">
-        <div class="balance-row">
-          <div class="balance-item">
-            <div class="balance-label">BNB 总余额</div>
-            <div class="balance-value bnb-value" id="bnbBalance">0.000</div>
+      <!-- Balance -->
+      <div class="card" style="padding:0;">
+        <div class="balance-grid">
+          <div class="bal-cell">
+            <div class="bal-label">BNB 余额</div>
+            <div class="bal-value bnb" id="bnbBalance">0.000</div>
           </div>
-          <div class="balance-item">
-            <div class="balance-label">代币总余额</div>
-            <div class="balance-value" id="tokenBalanceDisplay">-</div>
+          <div class="bal-cell">
+            <div class="bal-label">代币余额</div>
+            <div class="bal-value token" id="tokenBalanceDisplay">-</div>
           </div>
         </div>
-        <div id="balanceDetails" class="balance-details"></div>
+        <div id="balanceDetails" class="bal-details"></div>
       </div>
 
-      <div class="trade-card">
-        <div class="card-title">💰 批量交易</div>
-
+      <!-- Trade -->
+      <div class="card trade-card">
         <div class="tabs">
-          <button type="button" class="tab buy active" id="tabBuy">📈 买入</button>
-          <button type="button" class="tab sell" id="tabSell">📉 卖出</button>
+          <button type="button" class="tab buy active" id="tabBuy">买入</button>
+          <button type="button" class="tab sell" id="tabSell">卖出</button>
+        </div>
+
+        <div id="lpInfo"></div>
+
+        <div class="form-group">
+          <div class="form-label">
+            <span>合约地址</span>
+            <span id="pasteBtn" class="action">粘贴</span>
+          </div>
+          <input id="tokenAddress" type="text" class="form-input" placeholder="0x...">
+          <div id="tokenNameBadge" class="token-badge">
+            <span id="tokenSymbolTag" class="sym"></span>
+            <span id="tokenPoolTag" class="tag"></span>
+          </div>
         </div>
 
         <div class="form-group">
-          <label>
-            代币合约地址
-            <span id="pasteBtn">粘贴</span>
-          </label>
-          <input id="tokenAddress" type="text" placeholder="0x... 输入代币合约地址">
-        </div>
-
-        <div class="form-group">
-          <label>
+          <div class="form-label">
             <span id="amountLabel">买入数量 (BNB/钱包)</span>
-            <span id="balanceHint">每个钱包的交易数量</span>
-          </label>
-          <div class="input-group">
-            <input id="amount" type="number" placeholder="0.0" step="0.001">
-            <button type="button" id="maxBtn">MAX</button>
+            <span id="balanceHint" style="color:var(--text3);">-</span>
           </div>
-          <!-- 买入快捷金额 -->
-          <div id="buyQuickRow" class="quick-row">
-            <button type="button" class="quick-btn" data-amt="0.01">0.01</button>
-            <button type="button" class="quick-btn" data-amt="0.05">0.05</button>
-            <button type="button" class="quick-btn" data-amt="0.1">0.1</button>
-            <button type="button" class="quick-btn" data-amt="0.5">0.5</button>
-            <button type="button" class="quick-btn" data-amt="1">1</button>
+          <div class="input-row">
+            <input id="amount" type="number" class="form-input" placeholder="0.0" step="0.001">
+            <button type="button" id="maxBtn" class="btn-max">MAX</button>
           </div>
-          <!-- 卖出百分比按钮 -->
+          <div id="buyQuickRow" class="quick-row"></div>
           <div id="sellPercentRow" class="percent-row">
-            <button type="button" class="percent-btn" data-pct="25">25%</button>
-            <button type="button" class="percent-btn" data-pct="50">50%</button>
-            <button type="button" class="percent-btn" data-pct="75">75%</button>
-            <button type="button" class="percent-btn" data-pct="100">100%</button>
+            <button type="button" class="pct-btn percent-btn" data-pct="25">25%</button>
+            <button type="button" class="pct-btn percent-btn" data-pct="50">50%</button>
+            <button type="button" class="pct-btn percent-btn" data-pct="75">75%</button>
+            <button type="button" class="pct-btn percent-btn" data-pct="100">100%</button>
           </div>
         </div>
 
-        <div id="priceInfo" style="display:none;">
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#666;">预估单价</span>
-            <span id="estimatedPrice" style="color:#00d4aa;font-family:monospace;">-</span>
+        <div id="priceInfo">
+          <div class="price-row">
+            <span class="lbl">预估获得</span>
+            <span id="estimatedPrice" class="val est">-</span>
           </div>
-          <div style="display:flex;justify-content:space-between;">
-            <span style="color:#666;">最低获得</span>
-            <span id="minOutput" style="color:#f0b90b;font-family:monospace;">-</span>
+          <div class="price-row">
+            <span class="lbl">最低获得</span>
+            <span id="minOutput" class="val min">-</span>
           </div>
         </div>
 
-        <div class="warning-box" id="warningBox">
-          ⚠️ 滑点设置较高 (≥25%)，可能被三明治攻击
-        </div>
+        <div class="warning-box" id="warningBox">⚠️ 滑点 ≥25%，注意三明治攻击风险</div>
 
         <div class="settings-row">
-          <div class="setting-item">
-            <label>滑点 (%)</label>
-            <div class="slippage-presets">
-              <button type="button" class="slippage-btn" data-slip="5">5%</button>
-              <button type="button" class="slippage-btn" data-slip="10">10%</button>
-              <button type="button" class="slippage-btn" data-slip="15">15%</button>
-              <button type="button" class="slippage-btn" data-slip="25">25%</button>
-              <button type="button" class="slippage-btn" data-slip="49">49%</button>
-            </div>
-            <input id="slippage" type="number" value="15" min="0.1" max="100" step="0.1">
+          <div class="setting-col">
+            <div class="form-label">滑点 (%)</div>
+            <div id="slipPresets" class="slip-presets"></div>
+            <input id="slippage" type="number" class="form-input" value="15" min="0.1" max="100" step="0.1">
           </div>
-          <div class="setting-item">
-            <label>Gas Price (Gwei)</label>
-            <input id="gasPriceInput" type="number" value="3" min="1" max="100" step="0.5">
+          <div class="setting-col">
+            <div class="form-label">Gas (Gwei)</div>
+            <input id="gasPriceInput" type="number" class="form-input" value="3" min="1" max="100" step="0.5" style="margin-top:26px;">
           </div>
         </div>
 
-        <button type="button" id="tradeBtn" class="btn-trade btn-buy">
-          🚀 买入
-        </button>
+        <button type="button" id="tradeBtn" class="btn-trade btn-buy">🚀 买入</button>
 
-        <div id="statusBar" class="status-bar" style="display: none;"></div>
+        <!-- 一键快速买卖 -->
+        <div class="fast-trade">
+          <div class="form-label" style="margin-top:10px;">
+            <span>⚡ 快速交易</span>
+            <span id="editQuickBtn" class="action">自定义</span>
+          </div>
+          <div id="fastBuyRow" class="fast-row">
+            <button type="button" class="fast-btn fast-buy" data-amt="0.01">买0.01</button>
+            <button type="button" class="fast-btn fast-buy" data-amt="0.05">买0.05</button>
+            <button type="button" class="fast-btn fast-buy" data-amt="0.1">买0.1</button>
+            <button type="button" class="fast-btn fast-buy" data-amt="0.5">买0.5</button>
+          </div>
+          <div id="fastSellRow" class="fast-row" style="margin-top:5px;">
+            <button type="button" class="fast-btn fast-sell" data-pct="25">卖25%</button>
+            <button type="button" class="fast-btn fast-sell" data-pct="50">卖50%</button>
+            <button type="button" class="fast-btn fast-sell" data-pct="75">卖75%</button>
+            <button type="button" class="fast-btn fast-sell" data-pct="100">全卖</button>
+          </div>
+          <!-- 自定义编辑面板 -->
+          <div id="quickEditPanel" class="quick-edit" style="display:none;">
+            <div class="form-label" style="margin-top:8px;"><span>买入快捷金额 (BNB)</span></div>
+            <input id="customQuickBuy" type="text" class="form-input" placeholder="0.01, 0.05, 0.1, 0.5, 1">
+            <div class="form-label" style="margin-top:6px;"><span>滑点快捷值 (%)</span></div>
+            <input id="customSlipValues" type="text" class="form-input" placeholder="5, 10, 15, 25, 49">
+            <div class="form-label" style="margin-top:6px;"><span>快速买入金额 (BNB)</span></div>
+            <input id="customBuyAmounts" type="text" class="form-input" placeholder="0.01, 0.05, 0.1, 0.5">
+            <div class="form-label" style="margin-top:6px;"><span>快速卖出比例 (%)</span></div>
+            <input id="customSellPcts" type="text" class="form-input" placeholder="25, 50, 75, 100">
+            <div style="display:flex;gap:6px;margin-top:8px;">
+              <button type="button" id="saveQuickBtn" class="fast-btn fast-buy" style="flex:1;">保存</button>
+              <button type="button" id="cancelQuickBtn" class="fast-btn" style="flex:1;background:var(--surface);color:var(--text3);border-color:var(--card-border);">取消</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="statusBar" class="status-bar"></div>
       </div>
     </div>
   </div>

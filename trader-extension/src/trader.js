@@ -177,7 +177,7 @@ async function init() {
 }
 
 async function initAfterUnlock() {
-  config = await chrome.storage.local.get(['wallets', 'activeWalletIds', 'rpcUrl', 'slippage', 'tipRate']);
+  config = await chrome.storage.local.get(['wallets', 'activeWalletIds', 'rpcUrl', 'slippage', 'tipRate', 'gasPrice', 'buyAmount', 'customQuickBuy', 'customSlipValues', 'customBuyAmounts', 'customSellPcts']);
 
   if (config.privateKey && !config.wallets) {
     const key = config.privateKey;
@@ -208,6 +208,9 @@ async function initAfterUnlock() {
 
   await initWalletClients();
   if (config.slippage) { $('slippage').value = config.slippage; updateSlippageBtn(config.slippage); }
+  if (config.gasPrice) { $('gasPriceInput').value = config.gasPrice; }
+  if (config.buyAmount) { $('amount').value = config.buyAmount; }
+  renderAllQuickButtons();
   renderWalletSelector();
   await loadBalances();
 }
@@ -234,7 +237,7 @@ function renderWalletSelector() {
     const hasClient = walletClients.has(w.id);
     return `<div class="wallet-chip ${isActive ? 'active' : ''} ${!hasClient ? 'error' : ''}" data-id="${w.id}">
       <input type="checkbox" class="wallet-check" data-id="${w.id}" ${isActive ? 'checked' : ''} ${!hasClient ? 'disabled' : ''}>
-      <span class="wallet-chip-name">${w.name}</span></div>`;
+      <span>${w.name}</span></div>`;
   }).join('');
 
   container.querySelectorAll('.wallet-check').forEach(cb => {
@@ -272,7 +275,7 @@ async function loadBalances() {
     $('walletCount').textContent = `${activeWalletIds.length}/${wallets.length}`;
     if (balances.length > 0) {
       $('balanceDetails').innerHTML = balances.map(b =>
-        `<div class="balance-row-item"><span>${b.name}</span><span>${parseFloat(formatUnits(b.balance, 18)).toFixed(4)} BNB</span></div>`
+        `<div class="bal-row"><span>${b.name}</span><span>${parseFloat(formatUnits(b.balance, 18)).toFixed(4)} BNB</span></div>`
       ).join('');
     }
     updateBalanceHint();
@@ -288,6 +291,7 @@ async function detectToken(addr) {
     tokenInfo = { decimals: 18, symbol: '', balance: 0n };
     lpInfo = { hasLP: false, isInternal: false };
     $('tokenBalanceDisplay').textContent = '-';
+    const badge = $('tokenNameBadge'); if (badge) badge.classList.remove('show');
     const lpDiv = $('lpInfo'); if (lpDiv) lpDiv.style.display = 'none';
     const priceDiv = $('priceInfo'); if (priceDiv) priceDiv.style.display = 'none';
     return;
@@ -319,12 +323,22 @@ async function detectToken(addr) {
     $('tokenBalanceDisplay').textContent = parseFloat(formatUnits(totalBalance, info.decimals)).toFixed(4);
 
     const hasPool = info.isInternal || info.hasLiquidity;
+    // 外盘: reserve0/1 按地址排序，需判断哪个是 WBNB
+    let rBNB, rToken;
+    if (info.isInternal) {
+      rBNB = info.tmFunds;
+      rToken = info.tmOffers;
+    } else {
+      const tokenLower = addr.toLowerCase() < WBNB.toLowerCase();
+      rBNB = tokenLower ? info.pairReserve1 : info.pairReserve0;
+      rToken = tokenLower ? info.pairReserve0 : info.pairReserve1;
+    }
     lpInfo = {
       hasLP: hasPool,
       isInternal: info.isInternal,
       tmQuote: info.tmQuote,
-      reserveBNB: info.isInternal ? info.tmFunds : info.pairReserve0,
-      reserveToken: info.isInternal ? info.tmOffers : info.pairReserve1,
+      reserveBNB: rBNB,
+      reserveToken: rToken,
       tmFunds: info.tmFunds,
       tmMaxFunds: info.tmMaxFunds,
       tmOffers: info.tmOffers,
@@ -332,6 +346,23 @@ async function detectToken(addr) {
       isTaxToken: info.isTaxToken,
       taxFeeRate: info.taxFeeRate,
     };
+
+    const badge = $('tokenNameBadge');
+    const symbolTag = $('tokenSymbolTag');
+    const poolTag = $('tokenPoolTag');
+    if (badge && symbolTag) {
+      symbolTag.textContent = tokenInfo.symbol;
+      if (poolTag) {
+        if (hasPool) {
+          poolTag.textContent = info.isInternal ? '🔥 内盘' : '🥞 外盘';
+          poolTag.className = 'tag ' + (info.isInternal ? 'tag-internal' : 'tag-external');
+        } else {
+          poolTag.textContent = '⚠️ 无LP';
+          poolTag.className = 'tag tag-internal';
+        }
+      }
+      badge.classList.add('show');
+    }
 
     if (hasPool) {
       showLPInfo(info);
@@ -349,28 +380,29 @@ async function detectToken(addr) {
 }
 
 function showLPInfo(info) {
-  let div = $('lpInfo');
-  if (!div) {
-    div = document.createElement('div');
-    div.id = 'lpInfo';
-    div.style.cssText = 'background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;';
-    document.querySelector('.trade-card').insertBefore(div, document.querySelector('.tabs'));
-  }
+  const div = $('lpInfo');
+  if (!div) return;
 
-  const poolType = info.isInternal ? '🔥 Four.meme 内盘' : '🥞 PancakeSwap';
-  const poolColor = info.isInternal ? '#ff6b6b' : '#00d4aa';
-  const quoteVal = info.isInternal ? info.tmFunds : info.pairReserve0;
-  const tokenVal = info.isInternal ? info.tmOffers : info.pairReserve1;
+  const poolType = info.isInternal ? '🔥 Four 内盘' : '🥞 PCS 外盘';
+  const poolColor = info.isInternal ? 'var(--red)' : 'var(--accent)';
+  const quoteVal = lpInfo.reserveBNB;
+  const tokenVal = lpInfo.reserveToken;
 
   div.style.display = 'block';
   div.innerHTML = `
-    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-      <span style="color:#888;">${poolType}</span>
-      <span style="color:${poolColor};">✓ 已找到</span>
+    <div class="lp-header">
+      <span class="type" style="color:var(--text2);">${poolType}</span>
+      <span class="status" style="color:${poolColor};">✓ 已检测</span>
     </div>
-    <div style="display:flex;justify-content:space-between;">
-      <div><div style="color:#666;font-size:10px;">BNB</div><div style="color:#f0b90b;">${formatNum(quoteVal, 18)}</div></div>
-      <div style="text-align:right;"><div style="color:#666;font-size:10px;">${tokenInfo.symbol}</div><div style="color:#00d4aa;">${formatNum(tokenVal, tokenInfo.decimals)}</div></div>
+    <div class="lp-reserves">
+      <div class="lp-res-item">
+        <div class="lbl" style="text-transform:uppercase;">BNB 储备</div>
+        <div class="val" style="color:var(--yellow);">${formatNum(quoteVal, 18)}</div>
+      </div>
+      <div class="lp-res-item">
+        <div class="lbl" title="${tokenInfo.symbol}" style="color:#00ffaa;font-weight:700;">${tokenInfo.symbol} 储备</div>
+        <div class="val" style="color:var(--accent);">${formatNum(tokenVal, tokenInfo.decimals)}</div>
+      </div>
     </div>
   `;
 }
@@ -442,7 +474,13 @@ async function sell(walletId, tokenAddr, amountStr, gasPrice) {
   if (!wc) throw new Error('钱包未初始化');
   await refreshTipConfig();
 
-  const amt = parseUnits(amountStr, tokenInfo.decimals);
+  let amt = parseUnits(amountStr, tokenInfo.decimals);
+  // Four.meme TM 要求卖出数量 Gwei 对齐（末 9 位为 0），否则 revert "GW"
+  if (lpInfo.isInternal && tokenInfo.decimals >= 9) {
+    const GW = 10n ** 9n;
+    amt = (amt / GW) * GW;
+  }
+  if (amt <= 0n) throw new Error('数量太小');
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200);
   const tipRate = getTipRate();
 
@@ -589,6 +627,11 @@ function setupEvents() {
   const slippageInput = el('slippage');
 
   document.addEventListener('click', (e) => {
+    // span 类可点击元素（粘贴、自定义等）
+    const clickedId = e.target.id;
+    if (clickedId === 'pasteBtn') { e.preventDefault(); pasteAddress(); return; }
+    if (clickedId === 'editQuickBtn') { e.preventDefault(); toggleQuickEdit(true); return; }
+
     const t = e.target.closest && e.target.closest('button');
     if (!t) return;
     if (t.id === 'maxBtn') { e.preventDefault(); setMax(); return; }
@@ -601,13 +644,19 @@ function setupEvents() {
     }
     if (t.classList?.contains('quick-btn') && t.dataset.amt) { e.preventDefault(); if (amountInput) amountInput.value = t.dataset.amt; updatePrice(); return; }
     if (t.classList?.contains('percent-btn') && t.dataset.pct) { e.preventDefault(); setPercentAmount(parseInt(t.dataset.pct, 10)); return; }
-    if (t.id === 'pasteBtn') { e.preventDefault(); pasteAddress(); return; }
     if (t.id === 'settingsBtn' || t.id === 'goSettingsBtn') { e.preventDefault(); location.href = 'settings.html'; return; }
+    if (t.classList?.contains('fast-buy') && t.dataset.amt) { e.preventDefault(); fastBuy(t.dataset.amt); return; }
+    if (t.classList?.contains('fast-sell') && t.dataset.pct) { e.preventDefault(); fastSell(parseInt(t.dataset.pct, 10)); return; }
+    if (t.id === 'saveQuickBtn') { e.preventDefault(); saveQuickConfig(); return; }
+    if (t.id === 'cancelQuickBtn') { e.preventDefault(); toggleQuickEdit(false); return; }
   });
 
   if (tokenInput) { let timer; tokenInput.oninput = () => { clearTimeout(timer); timer = setTimeout(() => detectToken(tokenInput.value.trim()), 300); }; }
-  if (amountInput) amountInput.oninput = updatePrice;
-  if (slippageInput) slippageInput.oninput = () => { updateSlippageBtn(slippageInput.value); updatePrice(); };
+  if (amountInput) amountInput.oninput = () => { updatePrice(); chrome.storage.local.set({ buyAmount: amountInput.value }); };
+  if (slippageInput) slippageInput.oninput = () => { updateSlippageBtn(slippageInput.value); updatePrice(); chrome.storage.local.set({ slippage: slippageInput.value }); };
+
+  const gasInput = el('gasPriceInput');
+  if (gasInput) gasInput.oninput = () => { chrome.storage.local.set({ gasPrice: gasInput.value }); };
 }
 
 async function pasteAddress() {
@@ -619,7 +668,7 @@ function switchMode(mode) {
   $('tabBuy').classList.toggle('active', mode === 'buy');
   $('tabSell').classList.toggle('active', mode === 'sell');
   $('tradeBtn').className = 'btn-trade ' + (mode === 'buy' ? 'btn-buy' : 'btn-sell');
-  $('tradeBtn').innerHTML = mode === 'buy' ? '🚀 买入' : '💥 卖出';
+  $('tradeBtn').textContent = mode === 'buy' ? '🚀 买入' : '💥 卖出';
   $('amountLabel').textContent = mode === 'buy' ? '买入数量 (BNB/钱包)' : '卖出数量 (' + tokenInfo.symbol + '/钱包)';
   $('buyQuickRow').style.display = mode === 'buy' ? 'flex' : 'none';
   $('sellPercentRow').classList.toggle('show', mode === 'sell');
@@ -649,7 +698,7 @@ function setPercentAmount(pct) {
 }
 
 function updateSlippageBtn(val) {
-  document.querySelectorAll('.slippage-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.slip === val));
+  document.querySelectorAll('.slip-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.slip === val));
   $('warningBox').classList.toggle('show', parseFloat(val) >= 25);
 }
 
@@ -659,6 +708,127 @@ function showToast(msg, type = 'success', duration = 3000) {
   const toast = $('toast'); if (!toast) return;
   toast.textContent = msg; toast.className = 'toast ' + type; toast.classList.add('show');
   setTimeout(() => toast.classList.remove('show'), duration);
+}
+
+// ==================== 一键快速买卖 ====================
+
+async function fastBuy(amountStr) {
+  const tokenAddr = $('tokenAddress').value.trim();
+  if (!tokenAddr || !lpInfo.hasLP) { showStatus('请先输入代币地址', 'error'); return; }
+  const gasPrice = parseFloat($('gasPriceInput').value) || 3;
+  const activeWallets = activeWalletIds.filter(id => walletClients.has(id));
+  if (activeWallets.length === 0) { showStatus('请选择至少一个钱包', 'error'); return; }
+
+  const batchT0 = performance.now();
+  showStatus(`⚡ 快速买入 ${amountStr} BNB × ${activeWallets.length}...`, 'pending');
+
+  try {
+    const results = await Promise.allSettled(activeWallets.map(id => buy(id, tokenAddr, amountStr, gasPrice)));
+    const elapsed = ((performance.now() - batchT0) / 1000).toFixed(2);
+    const ok = results.filter(r => r.status === 'fulfilled').length;
+    const fail = results.length - ok;
+    if (fail === 0) { showStatus(`✓ 买入成功 ${elapsed}s`, 'success'); showToast(`⚡ 买入 ${amountStr} BNB 成功`, 'success'); }
+    else if (ok > 0) { showStatus(`成功 ${ok} / 失败 ${fail}`, 'error'); }
+    else { showStatus('买入全部失败', 'error'); showToast('❌ 买入失败', 'error'); }
+    await loadBalances();
+    await detectToken(tokenAddr);
+  } catch (e) { showStatus('快速买入失败: ' + e.message, 'error'); }
+}
+
+async function fastSell(pct) {
+  const tokenAddr = $('tokenAddress').value.trim();
+  if (!tokenAddr || !lpInfo.hasLP) { showStatus('请先输入代币地址', 'error'); return; }
+  if (!tokenInfo.address) { showStatus('请先检测代币', 'error'); return; }
+  const gasPrice = parseFloat($('gasPriceInput').value) || 3;
+  const activeWallets = activeWalletIds.filter(id => walletClients.has(id));
+  if (activeWallets.length === 0) { showStatus('请选择至少一个钱包', 'error'); return; }
+
+  const batchT0 = performance.now();
+  showStatus(`⚡ 快速卖出 ${pct}% × ${activeWallets.length}...`, 'pending');
+
+  try {
+    const sellPromises = activeWallets.map(async (id) => {
+      const bal = tokenBalances.get(id) || 0n;
+      if (bal <= 0n) throw new Error('余额为零');
+      const amt = (bal * BigInt(pct)) / 100n;
+      const amountStr = formatUnits(amt, tokenInfo.decimals);
+      return sell(id, tokenAddr, amountStr, gasPrice);
+    });
+    const results = await Promise.allSettled(sellPromises);
+    const elapsed = ((performance.now() - batchT0) / 1000).toFixed(2);
+    const ok = results.filter(r => r.status === 'fulfilled').length;
+    const fail = results.length - ok;
+    if (fail === 0) { showStatus(`✓ 卖出成功 ${elapsed}s`, 'success'); showToast(`⚡ 卖出 ${pct}% 成功`, 'success'); }
+    else if (ok > 0) { showStatus(`成功 ${ok} / 失败 ${fail}`, 'error'); }
+    else { showStatus('卖出全部失败', 'error'); showToast('❌ 卖出失败', 'error'); }
+    await loadBalances();
+    await detectToken(tokenAddr);
+  } catch (e) { showStatus('快速卖出失败: ' + e.message, 'error'); }
+}
+
+// ==================== 自定义快捷按钮 ====================
+
+function renderAllQuickButtons() {
+  const quickBuy = (config.customQuickBuy || '0.01,0.05,0.1,0.5,1').split(',').map(s => s.trim()).filter(Boolean);
+  const slipVals = (config.customSlipValues || '5,10,15,25,49').split(',').map(s => s.trim()).filter(Boolean);
+  const fastBuyAmts = (config.customBuyAmounts || '0.01,0.05,0.1,0.5').split(',').map(s => s.trim()).filter(Boolean);
+  const fastSellPcts = (config.customSellPcts || '25,50,75,100').split(',').map(s => s.trim()).filter(Boolean);
+
+  const buyQuickRow = $('buyQuickRow');
+  if (buyQuickRow) {
+    buyQuickRow.innerHTML = quickBuy.map(a =>
+      `<button type="button" class="quick-btn" data-amt="${a}">${a}</button>`
+    ).join('');
+  }
+
+  const slipRow = $('slipPresets');
+  if (slipRow) {
+    slipRow.innerHTML = slipVals.map(v =>
+      `<button type="button" class="slip-btn slippage-btn" data-slip="${v}">${v}</button>`
+    ).join('');
+    updateSlippageBtn($('slippage')?.value || '15');
+  }
+
+  const fastBuyRow = $('fastBuyRow');
+  if (fastBuyRow) {
+    fastBuyRow.innerHTML = fastBuyAmts.map(a =>
+      `<button type="button" class="fast-btn fast-buy" data-amt="${a}">买${a}</button>`
+    ).join('');
+  }
+
+  const fastSellRow = $('fastSellRow');
+  if (fastSellRow) {
+    fastSellRow.innerHTML = fastSellPcts.map(p =>
+      `<button type="button" class="fast-btn fast-sell" data-pct="${p}">${p === '100' ? '全卖' : '卖' + p + '%'}</button>`
+    ).join('');
+  }
+}
+
+function toggleQuickEdit(show) {
+  const panel = $('quickEditPanel');
+  if (!panel) return;
+  panel.style.display = show ? 'block' : 'none';
+  if (show) {
+    $('customQuickBuy').value = config.customQuickBuy || '0.01, 0.05, 0.1, 0.5, 1';
+    $('customSlipValues').value = config.customSlipValues || '5, 10, 15, 25, 49';
+    $('customBuyAmounts').value = config.customBuyAmounts || '0.01, 0.05, 0.1, 0.5';
+    $('customSellPcts').value = config.customSellPcts || '25, 50, 75, 100';
+  }
+}
+
+function saveQuickConfig() {
+  const quickBuy = $('customQuickBuy').value.trim();
+  const slipVals = $('customSlipValues').value.trim();
+  const fastBuy = $('customBuyAmounts').value.trim();
+  const fastSell = $('customSellPcts').value.trim();
+  if (quickBuy) config.customQuickBuy = quickBuy;
+  if (slipVals) config.customSlipValues = slipVals;
+  if (fastBuy) config.customBuyAmounts = fastBuy;
+  if (fastSell) config.customSellPcts = fastSell;
+  chrome.storage.local.set({ customQuickBuy: quickBuy, customSlipValues: slipVals, customBuyAmounts: fastBuy, customSellPcts: fastSell });
+  renderAllQuickButtons();
+  toggleQuickEdit(false);
+  showToast('快捷按钮已更新', 'success');
 }
 
 // 初始化
