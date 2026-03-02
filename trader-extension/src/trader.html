@@ -42,11 +42,11 @@
       position: sticky; top: 0; z-index: 100;
     }
     .logo { display:flex; align-items:center; gap:7px; }
-    .logo-icon { font-size:18px; }
+    .logo-icon { width:22px; height:22px; border-radius:4px; }
     .logo-text {
       font-size: 15px; font-weight: 800;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
     }
     .logo-ver { font-size:9px; color:var(--text3); font-weight:500; }
     .header-right { display:flex; align-items:center; gap:6px; }
@@ -394,7 +394,7 @@
 <body>
   <div class="header">
     <div class="logo">
-      <span class="logo-icon">🦅</span>
+      <img class="logo-icon" src="../icon48.png" alt="FT" width="22" height="22">
       <span class="logo-text">FreedomTrader</span>
       <span class="logo-ver">FT</span>
     </div>
