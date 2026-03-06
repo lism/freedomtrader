@@ -37,8 +37,7 @@ export async function refreshTipConfig() {
 
 export function calcAmountOutMin(amountIn, reserveIn, reserveOut, decimalsOut, slippage) {
   if (reserveIn <= 0n || reserveOut <= 0n) {
-    console.warn('[滑点] 储备为零，跳过本地滑点保护，由合约处理');
-    return 0n;
+    throw new Error('LP 储备为零，无法交易');
   }
   let amountOut = (amountIn * reserveOut) / (reserveIn + amountIn);
   if (amountOut > reserveOut) amountOut = reserveOut;
@@ -65,8 +64,7 @@ export async function buy(walletId, tokenAddr, amountStr, gasPrice) {
       });
       amountOutMin = (result[2] * slipBps) / 10000n;
     } catch (e) {
-      console.warn('[BUY] tryBuy failed, using 0:', e.message);
-      amountOutMin = 0n;
+      throw new Error('无法预估买入数量: ' + e.message);
     }
   } else {
     amountOutMin = calcAmountOutMin(amt, state.lpInfo.reserveBNB, state.lpInfo.reserveToken, state.tokenInfo.decimals, slippage);
@@ -141,10 +139,10 @@ export async function sell(walletId, tokenAddr, amountStr, gasPrice) {
         args: [tokenAddr, amt]
       });
       const netFunds = result[2] - result[3];
-      amountOutMin = netFunds > 0n ? (netFunds * slipBps) / 10000n : 0n;
+      if (netFunds <= 0n) throw new Error('预估卖出收益为零');
+      amountOutMin = (netFunds * slipBps) / 10000n;
     } catch (e) {
-      console.warn('[SELL] trySell failed, using 0:', e.message);
-      amountOutMin = 0n;
+      throw new Error('无法预估卖出数量: ' + e.message);
     }
   } else {
     amountOutMin = calcAmountOutMin(amt, state.lpInfo.reserveToken, state.lpInfo.reserveBNB, 18, slippage);
