@@ -9,8 +9,8 @@ FreedomRouter/deployment.json
 FreedomRouter/vanity-params.json
 hooklimit/foundry-out/
 hooklimit/cache/
-LimitOrderBook/artifacts/
-LimitOrderBook/cache/
+LimitOrderBook/
+LimitOrderBook-archive.tar.gz
 assets/photos/
 trader-extension/dist/
 trader-extension/*.zip
