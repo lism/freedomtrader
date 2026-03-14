@@ -1,7 +1,7 @@
 const hre = require("hardhat");
 require("dotenv").config();
 
-const ROUTER = process.env.ROUTER_ADDRESS;
+const ROUTER = process.env.ROUTER_ADDRESS || "0x444444444444147c48E01D3669260E33d8b33c93";
 const TOKEN  = process.env.TOKEN_ADDRESS || "0x17e915ec75ba049ee32b9aa87d1d119346a24444";
 const GAS    = { gasPrice: hre.ethers.parseUnits("0.15", "gwei"), gasLimit: 800000 };
 
@@ -54,7 +54,7 @@ async function main() {
   else if (cmd === "buy") {
     const amount = process.env.AMOUNT || "0.0001";
     console.log(`买入 ${amount} BNB → ${symbol}`);
-    const tx = await router.buy(TOKEN, 0, deadline, tipRate, { value: hre.ethers.parseEther(amount), ...GAS });
+    const tx = await router.buy(TOKEN, 0, tipRate, deadline, { value: hre.ethers.parseEther(amount), ...GAS });
     console.log("TX:", tx.hash);
     const r = await tx.wait();
     for (const log of r.logs) {
@@ -68,14 +68,14 @@ async function main() {
     const amount = bal * BigInt(pct) / 100n;
     console.log(`卖出 ${pct}% = ${fmt(amount)} ${symbol}`);
 
-    const approveTarget = _getApproveTarget(info, await router.tokenManagerV2(), await router.tmHelper3(), ROUTER);
+    const approveTarget = _getApproveTarget(info);
     const allowance = await token.allowance(signer.address, approveTarget);
     if (allowance < amount) {
       console.log(`approve → ${approveTarget}...`);
       await (await token.approve(approveTarget, hre.ethers.MaxUint256, GAS)).wait();
     }
 
-    const tx = await router.sell(TOKEN, amount, 0, deadline, tipRate, GAS);
+    const tx = await router.sell(TOKEN, amount, 0, tipRate, deadline, GAS);
     console.log("TX:", tx.hash);
     const r = await tx.wait();
     for (const log of r.logs) {
@@ -87,7 +87,7 @@ async function main() {
     const buyAmt = process.env.AMOUNT || "0.0001";
 
     console.log("=== 买入 ===");
-    const buyTx = await router.buy(TOKEN, 0, deadline, tipRate, { value: hre.ethers.parseEther(buyAmt), ...GAS });
+    const buyTx = await router.buy(TOKEN, 0, tipRate, deadline, { value: hre.ethers.parseEther(buyAmt), ...GAS });
     console.log("TX:", buyTx.hash);
     const buyR = await buyTx.wait();
     let bought = 0n;
@@ -99,7 +99,7 @@ async function main() {
       const sellAmt = bought / 2n;
       console.log(`\n=== 卖出 50% = ${fmt(sellAmt)} ${symbol} ===`);
 
-      const approveTarget = _getApproveTarget(info, await router.tokenManagerV2(), await router.tmHelper3(), ROUTER);
+      const approveTarget = _getApproveTarget(info);
       const allowance = await token.allowance(signer.address, approveTarget);
       if (allowance < sellAmt) {
         console.log(`approve → ${approveTarget}...`);
@@ -107,7 +107,7 @@ async function main() {
       }
 
       try {
-        const sellTx = await router.sell(TOKEN, sellAmt, 0, deadline, tipRate, GAS);
+        const sellTx = await router.sell(TOKEN, sellAmt, 0, tipRate, deadline, GAS);
         console.log("TX:", sellTx.hash);
         const sellR = await sellTx.wait();
         for (const log of sellR.logs) {
@@ -124,18 +124,11 @@ async function main() {
   }
 }
 
-/**
- * 内盘 BNB 计价 → approve 给 TM_V2
- * 内盘 ERC20 计价 → approve 给 Helper3 (sellForEth 需要)
- * 外盘 → approve 给 Router Proxy
- */
-function _getApproveTarget(info, tmV2, helper3, routerProxy) {
-  if (info.isInternal) {
-    const quote = info.tmQuote;
-    if (quote === hre.ethers.ZeroAddress) return tmV2;
-    return helper3;
+function _getApproveTarget(info) {
+  if (info.approveTarget && info.approveTarget !== hre.ethers.ZeroAddress) {
+    return info.approveTarget;
   }
-  return routerProxy;
+  return ROUTER;
 }
 
 main().then(() => process.exit(0)).catch(e => { console.error(e.shortMessage || e.message.slice(0, 300)); process.exit(1); });
