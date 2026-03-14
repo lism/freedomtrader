@@ -6,6 +6,12 @@ node_modules/
 FreedomRouter/artifacts/
 FreedomRouter/cache/
 FreedomRouter/deployment.json
+FreedomRouter/vanity-params.json
+hooklimit/foundry-out/
+hooklimit/cache/
+LimitOrderBook/artifacts/
+LimitOrderBook/cache/
+assets/photos/
 trader-extension/dist/
 trader-extension/*.zip
 *.zip
