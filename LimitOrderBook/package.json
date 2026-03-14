@@ -1,0 +1,24 @@
+{
+  "name": "limit-order-book",
+  "version": "1.0.0",
+  "description": "BSC Limit Order Book — EnumerableSet indexed, event-driven keeper",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "test:system": "hardhat test test/LimitOrderBook.test.js",
+    "test:fork": "node scripts/run-fork-test.js",
+    "test:fork:raw": "hardhat test test/LimitOrderBook.fork.test.js",
+    "deploy:bsc": "hardhat run scripts/deploy.js --network bsc",
+    "deploy:testnet": "hardhat run scripts/deploy.js --network bscTestnet",
+    "test:local": "hardhat run scripts/test.js --network localhost",
+    "keeper": "node scripts/keeper.js"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "dotenv": "^16.3.1",
+    "hardhat": "^2.19.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.6.1"
+  }
+}
