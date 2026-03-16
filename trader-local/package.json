@@ -1,0 +1,19 @@
+{
+  "name": "freedom-trader-local",
+  "version": "1.0.0",
+  "description": "Freedom Trader 本地运行系统 - BSC + Solana 双链交易终端",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "wallet": "node src/index.js wallet",
+    "info": "node src/index.js info",
+    "buy": "node src/index.js buy",
+    "sell": "node src/index.js sell"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.4",
+    "bs58": "^6.0.0",
+    "viem": "^2.23.2"
+  }
+}

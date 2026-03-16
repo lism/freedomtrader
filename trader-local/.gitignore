@@ -1,0 +1,5 @@
+node_modules/
+config.json
+wallets.enc.json
+.approve-cache.json
+package-lock.json
