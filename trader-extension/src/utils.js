@@ -64,6 +64,14 @@ export function sanitizeAmountInput(input, maxDec = null) {
  * Normalize a decimal string for calculations/submission. This keeps only the
  * fractional digits supported by the trade flow and strips trailing zeros.
  */
+export function withTimeout(promise, ms, msg = 'Timeout') {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(msg)), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 export function normalizeAmount(input, maxDec = 18) {
   const s = sanitizeAmountInput(input, maxDec);
   if (!s) return '0';

@@ -6,6 +6,7 @@ import { updateBalanceHint } from './wallet.js';
 import { updatePrice } from './ui.js';
 import { LAMPORTS_PER_SOL, FALLBACK_SOL_RPCS } from './sol/constants.js';
 import { setConnection, getWssUrl } from './sol/connection.js';
+import { withTimeout } from './utils.js';
 
 function isRpcError(msg) {
   return msg.includes('403') || msg.includes('410') ||
@@ -21,7 +22,7 @@ async function detectWithFallback(addr) {
 
   // Try user's configured RPC first
   try {
-    const result = await solDetect(addr);
+    const result = await withTimeout(solDetect(addr), 15000, 'RPC timeout');
     return { result, getTokenBalance };
   } catch (e) {
     const msg = String(e?.message || e || '');
@@ -35,7 +36,7 @@ async function detectWithFallback(addr) {
     try {
       setConnection(rpc);
       console.log('[SOL-DETECT] Trying fallback RPC:', rpc);
-      const result = await solDetect(addr);
+      const result = await withTimeout(solDetect(addr), 10000, 'RPC timeout');
       if (userConn) setConnection(userConn.rpcEndpoint, savedWss);
       return { result, getTokenBalance };
     } catch (e) {

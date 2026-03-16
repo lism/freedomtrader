@@ -2,7 +2,7 @@ import {
   PublicKey, Transaction, ComputeBudgetProgram, SystemProgram,
 } from '@solana/web3.js';
 import { getConnection, getBlockhashFast } from './connection.js';
-import { LAMPORTS_PER_SOL, DEFAULT_COMPUTE_UNITS, DEFAULT_PRIORITY_FEE_LAMPORTS, WSOL_MINT, SPL_TOKEN_PROGRAM, SOL_TIP_RECIPIENT, DEFAULT_SOL_TIP_BPS, SOL_MARKER_ADDR, JITO_TIP_ACCOUNTS, DEFAULT_JITO_TIP_LAMPORTS } from './constants.js';
+import { LAMPORTS_PER_SOL, DEFAULT_COMPUTE_UNITS, DEFAULT_PRIORITY_FEE_LAMPORTS, WSOL_MINT, SPL_TOKEN_PROGRAM, SOL_TIP_RECIPIENT, DEFAULT_SOL_TIP_BPS, SOL_MARKER_ADDR, JITO_TIP_ACCOUNTS, DEFAULT_JITO_TIP_LAMPORTS, pickRandom } from './constants.js';
 import { getBondingCurve, getBcFeeConfig, getTokenProgram, getTokenBalance, getPoolReserves, getAmmGlobalConfig, warmDynamicFeeConfig, getAmmDynamicFeesSync } from './accounts.js';
 import { deriveATA } from './pda.js';
 import {
@@ -279,7 +279,7 @@ export async function sell(walletId, publicKey, mintAddress, tokenAmountOrPercen
 }
 
 function buildJitoTipIx(user, lamports) {
-  const tipAccount = JITO_TIP_ACCOUNTS[Math.floor(Math.random() * JITO_TIP_ACCOUNTS.length)];
+  const tipAccount = pickRandom(JITO_TIP_ACCOUNTS);
   return SystemProgram.transfer({ fromPubkey: user, toPubkey: tipAccount, lamports: BigInt(lamports) });
 }
 

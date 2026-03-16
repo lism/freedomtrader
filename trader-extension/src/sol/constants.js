@@ -67,3 +67,5 @@ export const JITO_BLOCK_ENGINES = [
   'https://singapore.mainnet.block-engine.jito.wtf',
 ];
 export const DEFAULT_JITO_TIP_LAMPORTS = 100_000;
+
+export const pickRandom = arr => arr[Math.floor(Math.random() * arr.length)];

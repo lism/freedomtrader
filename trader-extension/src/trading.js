@@ -1,8 +1,11 @@
 import { parseUnits } from 'viem';
-import { FREEDOM_ROUTER, ROUTER_ABI, ERC20_ABI, HELPER3_ABI, TOKEN_MANAGER_V2, HELPER3, ZERO_ADDR, DEFAULT_TIP_RATE, ROUTE } from './constants.js';
+import { FREEDOM_ROUTER, ROUTER_ABI, ERC20_ABI, HELPER3_ABI, TOKEN_MANAGER_V2, HELPER3, ZERO_ADDR, DEFAULT_TIP_RATE, ROUTE, ETH_SENTINEL } from './constants.js';
 import { bscWriteContract } from './crypto.js';
 import { state } from './state.js';
 import { $, getTradeAmountDecimals, normalizeAmount } from './utils.js';
+
+function _quoteAddr() { return state.quoteToken.address; }
+function _isNativeQuote() { return _quoteAddr() === ETH_SENTINEL; }
 
 const APPROVE_KEY = 'approvedTokens';
 const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
@@ -90,46 +93,25 @@ export async function refreshTipConfig() {
   if (c.tipRate != null) state.config.tipRate = c.tipRate;
 }
 
-export function calcAmountOutMin(amountIn, reserveIn, reserveOut, decimalsOut, slippage) {
-  if (reserveIn <= 0n || reserveOut <= 0n) {
-    throw new Error('LP 储备为零，无法交易');
-  }
-  let amountOut = (amountIn * reserveOut) / (reserveIn + amountIn);
-  if (amountOut > reserveOut) amountOut = reserveOut;
-  const slipBps = BigInt(Math.floor((100 - slippage) * 100));
-  return (amountOut * slipBps) / 10000n;
-}
-
 function _isFourInternal() {
   const r = state.lpInfo.routeSource;
   return r === ROUTE.FOUR_INTERNAL_BNB || r === ROUTE.FOUR_INTERNAL_ERC20;
 }
 
-function _isFlapBonding() {
-  const r = state.lpInfo.routeSource;
-  return r === ROUTE.FLAP_BONDING || r === ROUTE.FLAP_BONDING_SELL;
+// Internal tokens can only sell to BNB; override quote when non-BNB selected
+function _sellQuoteAddr() {
+  return _isFourInternal() ? ETH_SENTINEL : _quoteAddr();
 }
 
-function _isFlap() {
-  const r = state.lpInfo.routeSource;
-  return r === ROUTE.FLAP_BONDING || r === ROUTE.FLAP_BONDING_SELL || r === ROUTE.FLAP_DEX;
-}
-
-function _useRouterQuoteBuy() {
-  if (_isFourInternal()) return true;
-  return state.lpInfo.routeSource === ROUTE.FLAP_BONDING;
-}
-
-function _useRouterQuoteSell() {
-  if (_isFourInternal()) return true;
-  return _isFlapBonding();
+function _useRouterQuote() {
+  return state.lpInfo.routeSource !== ROUTE.NONE;
 }
 
 async function _getQuoteBuy(tokenAddr, amt, slipBps) {
-  if (_useRouterQuoteBuy()) {
+  if (_useRouterQuote()) {
     const estimated = await state.publicClient.readContract({
-      address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'quoteBuy',
-      args: [tokenAddr, amt]
+      address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'quote',
+      args: [_quoteAddr(), amt, tokenAddr]
     });
     return (estimated * slipBps) / 10000n;
   }
@@ -140,15 +122,15 @@ async function _getQuoteBuy(tokenAddr, amt, slipBps) {
     });
     return (result[2] * slipBps) / 10000n;
   }
-  const slippage = 10000n - slipBps > 0n ? Number(10000n - slipBps) / 100 : 15;
-  return calcAmountOutMin(amt, state.lpInfo.reserveBNB, state.lpInfo.reserveToken, state.tokenInfo.decimals, slippage);
+  throw new Error('无可用报价路径');
 }
 
 async function _getQuoteSell(tokenAddr, amt, slipBps) {
-  if (_useRouterQuoteSell()) {
+  const sellQ = _sellQuoteAddr();
+  if (_useRouterQuote()) {
     const estimated = await state.publicClient.readContract({
-      address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'quoteSell',
-      args: [tokenAddr, amt]
+      address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'quote',
+      args: [tokenAddr, amt, sellQ]
     });
     if (estimated <= 0n) throw new Error('预估卖出收益为零');
     return (estimated * slipBps) / 10000n;
@@ -162,8 +144,7 @@ async function _getQuoteSell(tokenAddr, amt, slipBps) {
     if (netFunds <= 0n) throw new Error('预估卖出收益为零');
     return (netFunds * slipBps) / 10000n;
   }
-  const slippage = 10000n - slipBps > 0n ? Number(10000n - slipBps) / 100 : 15;
-  return calcAmountOutMin(amt, state.lpInfo.reserveToken, state.lpInfo.reserveBNB, 18, slippage);
+  throw new Error('无可用报价路径');
 }
 
 export async function buy(walletId, tokenAddr, amountStr, gasPrice) {
@@ -172,7 +153,8 @@ export async function buy(walletId, tokenAddr, amountStr, gasPrice) {
   await refreshTipConfig();
 
   const normalizedAmount = normalizeAmount(amountStr, getTradeAmountDecimals(state.currentChain, 'buy', state.tokenInfo.decimals));
-  const amt = parseUnits(normalizedAmount, 18);
+  const qDec = state.quoteToken.decimals;
+  const amt = parseUnits(normalizedAmount, qDec);
   if (amt <= 0n) throw new Error('数量太小');
   const tipRate = getTipRate();
   const slippage = parseFloat($('slippage')?.value) || 15;
@@ -185,14 +167,21 @@ export async function buy(walletId, tokenAddr, amountStr, gasPrice) {
     throw new Error('无法预估买入数量: ' + e.message);
   }
 
+  const native = _isNativeQuote();
+  if (!native) {
+    await ensureApproved(walletId, wc.address, _quoteAddr(), FREEDOM_ROUTER, gasPrice, amt, 'BUY');
+  }
+
   const t0 = performance.now();
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 10);
-  console.log('[BUY] token:', tokenAddr, 'amount:', normalizedAmount, 'BNB, tipRate:', tipRate.toString(), 'amountOutMin:', amountOutMin.toString());
+  const qs = state.quoteToken.symbol;
+  console.log('[BUY] token:', tokenAddr, 'amount:', normalizedAmount, qs, 'tipRate:', tipRate.toString(), 'amountOutMin:', amountOutMin.toString());
 
   const res = await bscWriteContract(walletId, {
-    address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'buy',
-    args: [tokenAddr, amountOutMin, tipRate, deadline],
-    value: amt, gas: 800000n, gasPrice: parseUnits(gasPrice.toString(), 9)
+    address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'trade',
+    args: [_quoteAddr(), tokenAddr, native ? 0n : amt, amountOutMin, tipRate, deadline],
+    ...(native ? { value: amt } : {}),
+    gas: 800000n, gasPrice: parseUnits(gasPrice.toString(), 9)
   });
   const txHash = res.txHash;
 
@@ -205,10 +194,12 @@ export async function buy(walletId, tokenAddr, amountStr, gasPrice) {
   if (receipt.status !== 'success') throw new Error('交易失败: ' + txHash);
   console.log(`[BUY] ✓ 确认 | 等待: ${((tConfirm - tSent) / 1000).toFixed(2)}s | 总计: ${((tConfirm - t0) / 1000).toFixed(2)}s`);
 
-  const sellTarget = getSellApproveTarget();
-  try {
-    await ensureApproved(walletId, wc.address, tokenAddr, sellTarget, gasPrice, MAX_HALF, 'BUY');
-  } catch (e) { console.warn('[BUY] 自动 approve 失败:', e.message); }
+  // Pre-approve for both internal + external sell targets in parallel
+  const targets = new Set([getSellApproveTarget(), FREEDOM_ROUTER]);
+  await Promise.all([...targets].map(t =>
+    ensureApproved(walletId, wc.address, tokenAddr, t, gasPrice, MAX_HALF, 'BUY')
+      .catch(e => console.warn('[BUY] 自动 approve 失败:', e.message))
+  ));
 
   return { txHash, sendMs: tSent - t0, confirmMs: tConfirm - tSent, totalMs: tConfirm - t0 };
 }
@@ -248,9 +239,10 @@ export async function sell(walletId, tokenAddr, amountStr, gasPrice) {
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 10);
   console.log('[SELL] token:', tokenAddr, 'amount:', normalizedAmount, 'tipRate:', tipRate.toString());
 
+  const sellQ = _sellQuoteAddr();
   const res = await bscWriteContract(walletId, {
-    address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'sell',
-    args: [tokenAddr, amt, amountOutMin, tipRate, deadline],
+    address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'trade',
+    args: [tokenAddr, sellQ, amt, amountOutMin, tipRate, deadline],
     gas: 800000n, gasPrice: parseUnits(gasPrice.toString(), 9)
   });
   const txHash = res.txHash;

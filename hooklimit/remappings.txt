@@ -1,0 +1,9 @@
+forge-std/=../bsc-hook/lib/forge-std/src/
+ds-test/=../bsc-hook/lib/forge-std/lib/ds-test/src/
+openzeppelin-contracts/=../bsc-hook/lib/infinity-universal-router/lib/infinity-periphery/lib/infinity-core/lib/openzeppelin-contracts/
+solmate/=../bsc-hook/lib/infinity-universal-router/lib/infinity-periphery/lib/infinity-core/lib/solmate/
+infinity-core/=../bsc-hook/lib/infinity-universal-router/lib/infinity-periphery/lib/infinity-core/
+infinity-periphery/=../bsc-hook/lib/infinity-universal-router/lib/infinity-periphery/
+infinity-universal-router/=../bsc-hook/lib/infinity-universal-router/
+permit2/=../bsc-hook/lib/infinity-universal-router/lib/infinity-periphery/lib/permit2/
+bsc-hook/=../bsc-hook/

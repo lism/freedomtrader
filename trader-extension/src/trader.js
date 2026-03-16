@@ -5,7 +5,7 @@ import { $ } from './utils.js';
 import { LAMPORTS_PER_SOL } from './sol/constants.js';
 import { checkAndShowLock, setupLockEvents } from './lock.js';
 import { createClient, initWalletClients, initSolWalletKeypairs, renderWalletSelector, loadBalances } from './wallet.js';
-import { setupEvents, updateSlippageBtn, renderAllQuickButtons, showToast, applyChainUI } from './ui.js';
+import { setupEvents, updateSlippageBtn, renderAllQuickButtons, showToast, applyChainUI, switchQuoteToken } from './ui.js';
 import { detectToken } from './token.js';
 import { setConnection, stopBlockhashPrefetch } from './sol/connection.js';
 import { loadApprovedTokens } from './trading.js';
@@ -14,7 +14,7 @@ import { loadApprovedTokens } from './trading.js';
 const BSC_CONFIG_KEYS = [
   'wallets', 'activeWalletIds', 'rpcUrl', 'slippage', 'tipRate',
   'gasPrice', 'buyAmount', 'customQuickBuy', 'customSlipValues',
-  'customBuyAmounts', 'customSellPcts'
+  'customBuyAmounts', 'customSellPcts', 'quoteToken'
 ];
 
 const SOL_CONFIG_KEYS = [
@@ -63,6 +63,7 @@ function saveChainConfig() {
       slippage: $('slippage')?.value,
       gasPrice: $('gasPriceInput')?.value,
       buyAmount: state.amountDrafts.bsc.buy || '',
+      quoteToken: state.quoteToken.symbol,
     });
   } else {
     const priorityFeeLamports = solToLamports($('gasPriceInput')?.value);
@@ -88,6 +89,12 @@ function restoreChainConfig(config) {
     state.config.customSlipValues = config.customSlipValues;
     state.config.customBuyAmounts = config.customBuyAmounts;
     state.config.customSellPcts = config.customSellPcts;
+    // Restore quote token selection
+    if (config.quoteToken) {
+      switchQuoteToken(config.quoteToken);
+      const qs = $('quoteSelect');
+      if (qs) qs.value = config.quoteToken;
+    }
   } else {
     const slip = config.solSlippage || '15';
     const feeLamports = config.solPriorityFee ?? 100000;
@@ -119,7 +126,7 @@ async function switchChain(chain) {
   chrome.storage.local.set({ currentChain: chain });
 
   state.tokenInfo = { decimals: chain === 'sol' ? 6 : 18, symbol: '', balance: 0n };
-  state.lpInfo = { hasLP: false, isInternal: false, reserveBNB: 0n, reserveToken: 0n };
+  state.lpInfo = { hasLP: false, isInternal: false, routeSource: 0 };
   state.tokenBalances.clear();
   $('tokenAddress').value = '';
   $('tokenBalanceDisplay').textContent = '-';
@@ -179,6 +186,7 @@ async function initAfterUnlock() {
   renderAllQuickButtons();
   renderWalletSelector();
   await loadBalances();
+
 }
 
 async function init() {

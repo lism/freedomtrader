@@ -13,6 +13,7 @@ import { PUMP_PROGRAM, SPL_TOKEN_PROGRAM, TOKEN_2022_PROGRAM } from './constants
 //  48:  complete                bool (u8)
 //  49:  creator                 Pubkey (32 bytes)
 //  81:  is_mayhem_mode          bool (u8)
+const FEE_CONFIG_TTL = 300_000; // 5 min
 const BC_OFFSET = 8; // skip anchor discriminator
 
 export function parseBondingCurve(data) {
@@ -53,25 +54,27 @@ export function parseFeeConfig(data) {
 }
 
 let _bcFeeConfig = null;
+let _bcFeeConfigTs = 0;
 let _ammFeeConfig = null;
+let _ammFeeConfigTs = 0;
 
 export async function getBcFeeConfig() {
-  if (_bcFeeConfig) return _bcFeeConfig;
+  if (_bcFeeConfig && Date.now() - _bcFeeConfigTs < FEE_CONFIG_TTL) return _bcFeeConfig;
   const conn = getConnection();
-  const pda = deriveBcFeeConfig();
-  const info = await conn.getAccountInfo(pda);
+  const info = await conn.getAccountInfo(deriveBcFeeConfig());
   if (!info) throw new Error('Cannot read BC fee config');
   _bcFeeConfig = parseFeeConfig(info.data);
+  _bcFeeConfigTs = Date.now();
   return _bcFeeConfig;
 }
 
 export async function getAmmFeeConfig() {
-  if (_ammFeeConfig) return _ammFeeConfig;
+  if (_ammFeeConfig && Date.now() - _ammFeeConfigTs < FEE_CONFIG_TTL) return _ammFeeConfig;
   const conn = getConnection();
-  const pda = deriveAmmFeeConfig();
-  const info = await conn.getAccountInfo(pda);
+  const info = await conn.getAccountInfo(deriveAmmFeeConfig());
   if (!info) throw new Error('Cannot read AMM fee config');
   _ammFeeConfig = parseFeeConfig(info.data);
+  _ammFeeConfigTs = Date.now();
   return _ammFeeConfig;
 }
 
@@ -238,9 +241,10 @@ const GLOBAL_CONFIG_OFFSET = 8;
 const FEE_RECIPIENTS_COUNT = 8;
 
 let _ammGlobalConfig = null;
+let _ammGlobalConfigTs = 0;
 
 export async function getAmmGlobalConfig() {
-  if (_ammGlobalConfig) return _ammGlobalConfig;
+  if (_ammGlobalConfig && Date.now() - _ammGlobalConfigTs < FEE_CONFIG_TTL) return _ammGlobalConfig;
   const conn = getConnection();
   const info = await conn.getAccountInfo(
     new PublicKey('ADyA8hdefvWN2dbGGWFotbzWxrAvLW83WG6QCVXvJKqw')
@@ -260,6 +264,7 @@ export async function getAmmGlobalConfig() {
   }
 
   _ammGlobalConfig = { lpFeeBps, protocolFeeBps, feeRecipients: recipients };
+  _ammGlobalConfigTs = Date.now();
   return _ammGlobalConfig;
 }
 
@@ -269,7 +274,6 @@ export async function getAmmGlobalConfig() {
 // We use a simpler approach: hardcode known tiers and re-fetch periodically.
 let _dynamicFeeConfig = null;
 let _dynamicFeeConfigTs = 0;
-const FEE_CONFIG_TTL = 300_000; // cache 5 min
 
 export async function warmDynamicFeeConfig() {
   if (_dynamicFeeConfig && (Date.now() - _dynamicFeeConfigTs < FEE_CONFIG_TTL)) return;

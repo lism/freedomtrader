@@ -250,7 +250,7 @@
       <div class="card-title">🔑 安全密码</div>
       <div id="pwSetup" style="display:none;">
         <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">首次使用，请设置密码。密码用于加密私钥，忘记则需重新导入。</div>
-        <div class="form-group"><input id="newPw" type="password" placeholder="设置密码（至少6位）"></div>
+        <div class="form-group"><input id="newPw" type="password" placeholder="设置密码"></div>
         <div class="form-group"><input id="confirmPw" type="password" placeholder="确认密码"></div>
         <button id="setPwBtn" class="btn btn-primary">设置密码</button>
       </div>
@@ -268,9 +268,9 @@
           <select id="lockDuration">
             <option value="5">5 分钟</option>
             <option value="15">15 分钟</option>
-            <option value="30" selected>30 分钟</option>
+            <option value="30">30 分钟</option>
             <option value="60">1 小时</option>
-            <option value="240">4 小时</option>
+            <option value="240" selected>4 小时</option>
             <option value="1440">永不锁定</option>
           </select>
         </div>
@@ -351,9 +351,10 @@
 
     <div class="card">
       <div class="card-title">🌐 BSC RPC 配置</div>
-      <div style="font-size: 12px; color: var(--text2); margin-bottom: 10px;">留空则使用默认节点：bsc-dataseed.bnbchain.org</div>
+      <div style="font-size: 12px; color: var(--text2); margin-bottom: 10px;">留空则使用默认多节点自动切换（内置 8 个公共 RPC）</div>
       <div class="form-group">
-        <input id="rpcUrl" type="text" placeholder="留空使用默认 RPC">
+        <label>交易 RPC（优先使用，故障自动切换备用节点）</label>
+        <input id="rpcUrl" type="text" placeholder="留空使用默认多节点">
       </div>
       <button id="saveRpcBtn" class="btn btn-primary btn-small">保存 RPC</button>
     </div>

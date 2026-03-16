@@ -1,104 +1,105 @@
-# FreedomRouter v4
+# FreedomRouter v6
 
-BSC 聚合路由合约 — 一个入口交易所有 Four.meme MEME 代币。
+BSC 聚合路由合约，统一处理 `Four.meme + Flap + PancakeSwap` 交易路径。
 
-自动判断 Four.meme 内盘 / PancakeSwap 外盘，精确区分 TM V1/V2 版本，原生支持 BNB 底池和 ERC20 底池（USD1/USDT 等），兼容 TaxToken。完全免费，小费自愿。
+当前版本为 **UUPS 可升级 Proxy**，Proxy 地址固定，后续逻辑升级只替换 Implementation，不需要迁移插件地址。
 
-## 为什么需要这个
+## 当前能力
 
-- **Four.meme 内盘**和 **PancakeSwap 外盘**是两套完全不同的交易接口
-- 内盘代币分 **BNB 计价** 和 **ERC20 计价**（USD1/USDT），交易方式不同
-- Four.meme 有 **V1 和 V2** 两套 TokenManager，接口不同
-- FreedomRouter 自动判断、自动路由，用户只需调 `buy` / `sell`
+- 自动识别 **Four.meme 内盘 / 外盘**
+- 自动识别 **Flap Bonding / DEX** 阶段
+- 支持 **BNB 底池** 与 **ERC20 底池**（USD1 / USDT / USDC / BUSD / FDUSD）
+- 兼容 **TaxToken**
+- 提供统一 `buy` / `sell` / `quoteBuy` / `quoteSell` / `getTokenInfo`
+- 小费自愿，默认 `tipRate = 0`
 
 ## 架构
 
-```
-用户 → Proxy (ERC1967)
+```text
+用户 → FreedomRouter (ERC1967Proxy / UUPS)
          │ delegatecall
          ↓
-       Implementation
-         ├── Helper3.getTokenInfo(token) → 获取 TM 版本/quote/状态
-         │
-         ├─ 内盘 (mode != 0 且未上外盘)
-         │    ├─ quote == address(0) → BNB 计价
-         │    │    ├─ V1: TM_V1.purchaseTokenAMAP / saleToken
-         │    │    └─ V2: TM_V2.buyTokenAMAP / sellToken
-         │    │
-         │    └─ quote == USD1/USDT → ERC20 计价
-         │         └─ Helper3.buyWithEth / sellForEth (自动 BNB↔ERC20)
-         │
-         └─ 外盘 (已上 PancakeSwap)
-              └─ findBestQuote() → 选最优底池 → PancakeSwap swap
+       FreedomRouterImpl
+         ├── Four.meme 内盘
+         │    ├── BNB quote      → TM_V2.buyTokenAMAP / sellToken
+         │    └── ERC20 quote    → Helper3.buyWithEth / sellForEth
+         ├── Four / Flap 外盘    → PancakeSwap
+         └── Flap Bonding        → Flap Portal
 ```
 
 ## 合约地址（BSC 主网）
 
 | 合约 | 地址 |
 |------|------|
-| **FreedomRouter (Proxy)** | `0x87083948E696c19B1CE756dd6995D4a615a7f2c3` |
-| TokenManager V1 | `0xEC4549caDcE5DA21Df6E6422d448034B5233bFbC` |
-| TokenManager V2 | `0x5c952063c7fc8610FFDB798152D69F0B9550762b` |
-| TokenManagerHelper3 | `0xF251F83e40a78868FcfA3FA4599Dad6494E46034` |
-| PancakeSwap Router | `0x10ED43C718714eb63d5aA57B78B54704E256024E` |
+| FreedomRouter (Proxy, UUPS) | [`0x444444444444147c48E01D3669260E33d8b33c93`](https://bscscan.com/address/0x444444444444147c48E01D3669260E33d8b33c93) |
+| FreedomRouterImpl | [`0xc7B76F939CbC84d7a7077411974A5CbC9dfb3Bbd`](https://bscscan.com/address/0xc7B76F939CbC84d7a7077411974A5CbC9dfb3Bbd) |
+| TokenManager V2 | [`0x5c952063c7fc8610FFDB798152D69F0B9550762b`](https://bscscan.com/address/0x5c952063c7fc8610FFDB798152D69F0B9550762b) |
+| TokenManagerHelper3 | [`0xF251F83e40a78868FcfA3FA4599Dad6494E46034`](https://bscscan.com/address/0xF251F83e40a78868FcfA3FA4599Dad6494E46034) |
+| Flap Portal | [`0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0`](https://bscscan.com/address/0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0) |
+| PancakeSwap Router | [`0x10ED43C718714eb63d5aA57B78B54704E256024E`](https://bscscan.com/address/0x10ED43C718714eb63d5aA57B78B54704E256024E) |
 
-## 接口
+## 核心接口
 
-### buy(token, amountOutMin, deadline, tipRate) payable
+### `buy(token, amountOutMin, tipRate, deadline)` payable
 
-BNB 买入代币。自动判断内盘/外盘，内盘自动处理 BNB/ERC20 计价差异。
+用 BNB 买入代币，自动判断走 Four 内盘、Flap Portal 还是 PancakeSwap。
 
-```javascript
-await router.buy(tokenAddress, 0, deadline, 0, { value: parseEther("0.1") });
+```js
+await router.buy(tokenAddress, 0, 0, deadline, { value: parseEther("0.1") });
 ```
 
-### sell(token, amountIn, amountOutMin, deadline, tipRate)
+### `sell(token, amountIn, amountOutMin, tipRate, deadline)`
 
-卖出代币换 BNB。
+卖出代币换 BNB，实际授权目标请以 `getTokenInfo(...).approveTarget` 为准，不要在前端硬编码。
 
-**Approve 规则：**
-
-| 场景 | approve 目标 |
-|------|-------------|
-| 内盘 BNB 计价 | TokenManager V2 |
-| 内盘 ERC20 计价 | TokenManagerHelper3 |
-| 外盘 | Router Proxy |
-
-```javascript
-await token.approve(TARGET, MaxUint256);
-await router.sell(tokenAddress, amount, 0, deadline, 0);
+```js
+const info = await router.getTokenInfo(tokenAddress, user);
+await token.approve(info.approveTarget, MaxUint256);
+await router.sell(tokenAddress, amountIn, 0, 0, deadline);
 ```
 
-### getTokenInfo(token, user) view
+### `quoteBuy(token, amountIn)` / `quoteSell(token, amountIn)`
 
-一次调用获取代币完整状态：
+统一报价接口。部分路径不是 `view`，应使用 `eth_call` 模拟调用。
 
-```javascript
+### `getTokenInfo(token, user)`
+
+一次调用拿到完整路由和展示信息，重点字段：
+
+```js
 const info = await router.getTokenInfo(tokenAddress, userAddress);
-// info.isInternal      → true=内盘, false=外盘
-// info.tmVersion       → 1=V1, 2=V2, 0=非 four 代币
-// info.tmQuote         → address(0)=BNB计价, 其他=ERC20计价
-// info.tmAddress       → 管理该代币的 TM 地址
-// info.isTaxToken      → 是否为 TaxToken
-// info.taxFeeRate      → TaxToken 的税率
-// info.hasLiquidity    → 外盘是否有流动性
-// info.tmLiquidityAdded → 内盘是否已上外盘
+// info.routeSource      → 路由来源枚举
+// info.approveTarget    → 当前卖出应授权给谁
+// info.tmQuote          → Four 内盘 quote token
+// info.flapStatus       → Flap 状态（Bonding / DEX）
+// info.flapProgress     → Flap 进度
+// info.hasLiquidity     → Pancake 是否有池子
+// info.isTaxToken       → Four TaxToken 标记
 ```
 
-### getTokenInfoBatch(tokens[], user) view
+## 路由枚举
 
-批量查询多个代币，一次 RPC 调用。
+| routeSource | 含义 |
+|-------------|------|
+| `0` | NONE |
+| `1` | FOUR_INTERNAL_BNB |
+| `2` | FOUR_INTERNAL_ERC20 |
+| `3` | FOUR_EXTERNAL |
+| `4` | FLAP_BONDING |
+| `5` | FLAP_BONDING_SELL |
+| `6` | FLAP_DEX |
+| `7` | PANCAKE_ONLY |
 
 ## 小费
 
 完全自愿，`tipRate` 参数控制：
 
-| tipRate | 比例 | 说明 |
-|---------|------|------|
-| `0` | 0% | 完全免费 |
-| `10` | 0.1% | |
-| `100` | 1% | |
-| `500` | 5% | 上限 |
+| tipRate | 比例 |
+|---------|------|
+| `0` | 0% |
+| `10` | 0.1% |
+| `100` | 1% |
+| `500` | 5%（上限） |
 
 ## 开发
 
@@ -107,35 +108,55 @@ npm install
 npx hardhat compile
 ```
 
-### 部署
+## 部署与升级
+
+### 普通部署
 
 ```bash
 npx hardhat run scripts/deploy.js --network bsc
 ```
 
-### 测试
+### CREATE2 靓号部署
+
+1. 一次性准备 Factory + Impl，并输出矿机命令
+
+```bash
+npx hardhat run scripts/prepare-vanity.js --network bsc
+```
+
+2. 用 `vanity-params.json` 输出的 `factory + initCodeHash` 在矿机上挖 salt
+
+3. 挖到 salt 后部署 Proxy
+
+```bash
+DEPLOY_SALT=0x... npx hardhat run scripts/deploy-vanity.js --network bsc
+```
+
+### UUPS 升级
+
+```bash
+PROXY_ADDRESS=0x444444444444147c48E01D3669260E33d8b33c93 \
+npx hardhat run scripts/upgrade.js --network bsc
+```
+
+## 测试
 
 配置 `.env`：
 
-```
+```env
 PRIVATE_KEY=0x...
-ROUTER_ADDRESS=0x87083948E696c19B1CE756dd6995D4a615a7f2c3
+BSCSCAN_API_KEY=...
+ROUTER_ADDRESS=0x444444444444147c48E01D3669260E33d8b33c93
 TOKEN_ADDRESS=0x...
-CMD=test    # info | buy | sell | test
-TIP=0       # 0=免费, 10=0.1%
+CMD=info
+TIP=0
 ```
+
+执行：
 
 ```bash
 npx hardhat run scripts/test.js --network bsc
 ```
-
-## v4 变更
-
-- **Helper3 集成**: 通过 `TokenManagerHelper3.getTokenInfo` 精确获取 TM 版本和 quote 类型
-- **V1/V2 自动适配**: 自动调用正确版本的 TM 接口
-- **ERC20 计价内盘**: USD1/USDT 计价的内盘代币通过 Helper3 的 `buyWithEth` / `sellForEth` 交易
-- **TaxToken 支持**: 查询接口返回 `isTaxToken` 和 `taxFeeRate`
-- **上外盘检测**: 通过 `liquidityAdded` 判断内盘代币是否已迁移到外盘
 
 ## License
 

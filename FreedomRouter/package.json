@@ -7,9 +7,13 @@
     "test": "hardhat test",
     "deploy:bsc": "hardhat run scripts/deploy.js --network bsc",
     "deploy:testnet": "hardhat run scripts/deploy.js --network bscTestnet",
+    "tip:stats": "hardhat run scripts/tip-stats.js --network bsc",
     "test:trade": "hardhat run scripts/test-trade.js --network bsc",
     "test:buy": "hardhat run scripts/test-buy.js --network bsc",
-    "test:sell": "hardhat run scripts/test-sell.js --network bsc"
+    "test:sell": "hardhat run scripts/test-sell.js --network bsc",
+    "deploy:limit": "hardhat run scripts/deploy-limit-order.js --network bsc",
+    "test:limit": "hardhat run scripts/test-limit-order.js --network bsc",
+    "test:limit:local": "hardhat run scripts/test-limit-order-local.js --network localhost"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",

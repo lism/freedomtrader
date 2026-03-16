@@ -304,6 +304,14 @@
       color: #fff;
       border-color: var(--accent);
     }
+    .quote-select {
+      padding: 0 8px; min-width: 60px;
+      background: var(--surface); border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm); color: var(--text);
+      font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+      cursor: pointer; transition: all .15s;
+    }
+    .quote-select:focus { outline: none; border-color: var(--input-focus); }
 
     /* ===== Token Badge ===== */
     .token-badge {
@@ -643,6 +651,7 @@
           <div id="tokenNameBadge" class="token-badge">
             <span id="tokenSymbolTag" class="sym"></span>
             <span id="tokenPoolTag" class="tag"></span>
+            <span id="tokenPriceTag" class="tag" style="display:none;background:var(--surface);border:1px solid var(--card-border);color:var(--yellow);"></span>
           </div>
         </div>
 
@@ -653,6 +662,11 @@
           </div>
           <div class="input-row">
             <input id="amount" type="text" inputmode="decimal" class="form-input" placeholder="0.0" autocomplete="off" spellcheck="false">
+            <select id="quoteSelect" class="quote-select">
+              <option value="BNB" selected>BNB</option>
+              <option value="USDT">USDT</option>
+              <option value="USDC">USDC</option>
+            </select>
             <button type="button" id="maxBtn" class="btn-max">MAX</button>
           </div>
           <div id="buyQuickRow" class="quick-row"></div>
