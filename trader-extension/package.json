@@ -6,7 +6,8 @@
   "scripts": {
     "build": "node scripts/build.js",
     "test:regression": "node --experimental-default-type=module scripts/test-regressions.mjs",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "v4": "node --experimental-default-type=module src/bsc-v4/index.js"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4",

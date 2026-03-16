@@ -3,7 +3,7 @@ import { TransactionInstruction, SystemProgram } from '@solana/web3.js';
 import {
   PUMP_AMM, PUMP_AMM_GLOBAL_CONFIG, PUMP_FEE, WSOL_MINT,
   SPL_TOKEN_PROGRAM, ASSOCIATED_TOKEN_PROGRAM, SYSTEM_PROGRAM,
-  DISCRIMINATORS,
+  DISCRIMINATORS, pickRandom,
 } from './constants.js';
 import {
   derivePoolAuthority, derivePool, derivePoolV2,
@@ -12,16 +12,7 @@ import {
 } from './pda.js';
 import { getAmmGlobalConfig, getPool, getPoolReserves, getTokenProgram } from './accounts.js';
 import { getConnection } from './connection.js';
-
-function writeU64LE(value) {
-  const buf = Buffer.alloc(8);
-  buf.writeBigUInt64LE(BigInt(value));
-  return buf;
-}
-
-function writeOptionBoolFalse() {
-  return Buffer.from([1, 0]);
-}
+import { writeU64LE, writeOptionBoolFalse } from './bonding-curve.js';
 
 export async function findPoolForMint(mint) {
   const poolAuth = derivePoolAuthority(mint);
@@ -166,7 +157,7 @@ export function buildPumpSwapBuyIx(
   const userQuoteAta = deriveATA(user, WSOL_MINT, SPL_TOKEN_PROGRAM);
 
   const feeRecipient = globalConfig.feeRecipients.length > 0
-    ? globalConfig.feeRecipients[Math.floor(Math.random() * globalConfig.feeRecipients.length)]
+    ? pickRandom(globalConfig.feeRecipients)
     : user;
   const feeRecipientAta = deriveATA(feeRecipient, WSOL_MINT, SPL_TOKEN_PROGRAM);
 
@@ -222,7 +213,7 @@ export function buildPumpSwapSellIx(
   const userQuoteAta = deriveATA(user, WSOL_MINT, SPL_TOKEN_PROGRAM);
 
   const feeRecipient = globalConfig.feeRecipients.length > 0
-    ? globalConfig.feeRecipients[Math.floor(Math.random() * globalConfig.feeRecipients.length)]
+    ? pickRandom(globalConfig.feeRecipients)
     : user;
   const feeRecipientAta = deriveATA(feeRecipient, WSOL_MINT, SPL_TOKEN_PROGRAM);
 

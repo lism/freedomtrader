@@ -182,6 +182,7 @@ const utils = await import('../src/utils.js');
 const ui = await import('../src/ui.js');
 const { loadBalances } = await import('../src/wallet.js');
 const { ROUTE } = await import('../src/constants.js');
+const { FREEDOM_BUY_HOOK, FREEDOM_SELL_HOOK, getHookForOrder } = await import('../src/bsc-v4/constants.js');
 
 function resetState() {
   state.config = {};
@@ -323,11 +324,11 @@ async function testPriceUpdaterDropsStaleAsyncQuote() {
   amount.value = '1';
   slippage.value = '15';
   ui.updatePrice();
-  await sleep(180);
+  await sleep(320);
 
   amount.value = '2';
   ui.updatePrice();
-  await sleep(180);
+  await sleep(320);
 
   resolvers[0](111n * 10n ** 18n);
   await sleep(0);

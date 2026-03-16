@@ -2,7 +2,7 @@ import { Buffer } from 'buffer';
 import { TransactionInstruction } from '@solana/web3.js';
 import {
   PUMP_PROGRAM, PUMP_GLOBAL, PUMP_FEE, PUMP_FEE_RECIPIENTS,
-  SYSTEM_PROGRAM, DISCRIMINATORS,
+  SYSTEM_PROGRAM, DISCRIMINATORS, pickRandom,
 } from './constants.js';
 import {
   deriveBondingCurve, deriveBondingCurveV2, deriveCreatorVault,
@@ -11,17 +11,15 @@ import {
 } from './pda.js';
 import { getBcFeeConfig } from './accounts.js';
 
-function randomFeeRecipient() {
-  return PUMP_FEE_RECIPIENTS[Math.floor(Math.random() * PUMP_FEE_RECIPIENTS.length)];
-}
+const randomFeeRecipient = () => pickRandom(PUMP_FEE_RECIPIENTS);
 
-function writeU64LE(value) {
+export function writeU64LE(value) {
   const buf = Buffer.alloc(8);
   buf.writeBigUInt64LE(BigInt(value));
   return buf;
 }
 
-function writeOptionBoolFalse() {
+export function writeOptionBoolFalse() {
   // OptionBool { val: false } → 1 byte tag (1 = Some) + 1 byte value (0 = false)
   return Buffer.from([1, 0]);
 }

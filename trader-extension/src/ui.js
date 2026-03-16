@@ -1,11 +1,13 @@
 import { formatUnits, parseUnits } from 'viem';
 import { state } from './state.js';
-import { $, formatNum, getTradeAmountDecimals, normalizeAmount, sanitizeAmountInput } from './utils.js';
-import { FREEDOM_ROUTER, ROUTER_ABI, HELPER3, HELPER3_ABI, ROUTE } from './constants.js';
+import { $, formatNum, getTradeAmountDecimals, normalizeAmount, sanitizeAmountInput, withTimeout } from './utils.js';
+import { FREEDOM_ROUTER, ROUTER_ABI, ROUTE, ETH_SENTINEL, QUOTE_TOKENS } from './constants.js';
 import { LAMPORTS_PER_SOL } from './sol/constants.js';
 
 function isSol() { return state.currentChain === 'sol'; }
 function nativeSymbol() { return isSol() ? 'SOL' : 'BNB'; }
+function quoteSymbol() { return isSol() ? 'SOL' : state.quoteToken.symbol; }
+function _isNativeQuote() { return state.quoteToken.address === ETH_SENTINEL; }
 function getAmountInputDecimals(mode = state.tradeMode) {
   return mode === 'sell'
     ? getTradeAmountDecimals(state.currentChain, 'sell', state.tokenInfo.decimals)
@@ -42,7 +44,7 @@ function cacheAmountDraft(value, mode = state.tradeMode, persist = mode === 'buy
 function applyAmountValue(value, mode = state.tradeMode, persist = mode === 'buy') {
   const sanitized = cacheAmountDraft(value, mode, persist);
   const amountEl = $('amount');
-  if (amountEl) amountEl.value = sanitized;
+  if (amountEl && amountEl.value !== sanitized) amountEl.value = sanitized;
   return sanitized;
 }
 function restoreAmountDraft(mode = state.tradeMode) {
@@ -71,7 +73,7 @@ let _priceRequestId = 0;
 export function updatePrice() {
   clearTimeout(_priceTimer);
   const requestId = ++_priceRequestId;
-  _priceTimer = setTimeout(() => _updatePriceImpl(requestId), 150);
+  _priceTimer = setTimeout(() => _updatePriceImpl(requestId), 300);
 }
 
 function isPriceRequestCurrent(requestId) {
@@ -97,21 +99,15 @@ async function _updatePriceImpl(requestId) {
   const ns = nativeSymbol();
 
   try {
-    const route = state.lpInfo.routeSource || ROUTE.NONE;
-    const isBscRouter = !sol && state.tokenInfo.address && state.publicClient;
-    const isFourInternal = route === ROUTE.FOUR_INTERNAL_BNB || route === ROUTE.FOUR_INTERNAL_ERC20;
-    // Buy: FLAP_BONDING uses router quote; FLAP_BONDING_SELL buy goes PancakeSwap (local calc)
-    // Sell: FLAP_BONDING + FLAP_BONDING_SELL both use router quote
-    const useRouterQuoteBuy = isBscRouter && (isFourInternal || route === ROUTE.FLAP_BONDING);
-    const useRouterQuoteSell = isBscRouter && (isFourInternal || route === ROUTE.FLAP_BONDING || route === ROUTE.FLAP_BONDING_SELL);
-    const useRouter = state.tradeMode === 'buy' ? useRouterQuoteBuy : useRouterQuoteSell;
-    if (useRouter) {
+    if (!sol && state.tokenInfo.address && state.publicClient) {
       await _updateRouterPrice(div, amountPerWallet, walletCount, slip, requestId);
       return;
     }
 
+    // SOL: local AMM calc using virtualReserves
     const quoteReserve = state.lpInfo.reserveBNB;
     const tokenReserve = state.lpInfo.reserveToken;
+    if (!quoteReserve || !tokenReserve) { if (isPriceRequestCurrent(requestId)) div.style.display = 'none'; return; }
     if (!isPriceRequestCurrent(requestId)) return;
 
     if (state.tradeMode === 'buy') {
@@ -138,29 +134,37 @@ async function _updatePriceImpl(requestId) {
 async function _updateRouterPrice(div, amountPerWallet, walletCount, slip, requestId) {
   const token = state.tokenInfo.address;
   const dec = state.tokenInfo.decimals;
+  const qAddr = state.quoteToken.address;
+  const qDec = state.quoteToken.decimals;
+  const qs = quoteSymbol();
   try {
     if (state.tradeMode === 'buy') {
-      const funds = parseUnits(amountPerWallet, 18);
-      const est = await state.publicClient.readContract({
-        address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'quoteBuy', args: [token, funds]
-      });
+      const funds = parseUnits(amountPerWallet, qDec);
+      const est = await withTimeout(state.publicClient.readContract({
+        address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'quote', args: [qAddr, funds, token]
+      }), 10000);
       if (!isPriceRequestCurrent(requestId)) return;
       const min = (est * BigInt(Math.floor((100 - slip) * 100))) / 10000n;
       $('estimatedPrice').textContent = `≈ ${formatNum(est, dec)} ${state.tokenInfo.symbol} × ${walletCount}`;
       $('minOutput').textContent = `≥ ${formatNum(min * BigInt(walletCount), dec)} ${state.tokenInfo.symbol}`;
     } else {
+      // Internal tokens always sell to BNB regardless of quote selection
+      const isFourInt = state.lpInfo.routeSource === ROUTE.FOUR_INTERNAL_BNB || state.lpInfo.routeSource === ROUTE.FOUR_INTERNAL_ERC20;
+      const sellQ = isFourInt ? ETH_SENTINEL : qAddr;
+      const sellDec = isFourInt ? 18 : qDec;
+      const sellQs = isFourInt ? 'BNB' : qs;
       const amt = parseUnits(amountPerWallet, dec);
-      const est = await state.publicClient.readContract({
-        address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'quoteSell', args: [token, amt]
-      });
+      const est = await withTimeout(state.publicClient.readContract({
+        address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'quote', args: [token, amt, sellQ]
+      }), 10000);
       if (!isPriceRequestCurrent(requestId)) return;
       const min = (est * BigInt(Math.floor((100 - slip) * 100))) / 10000n;
-      $('estimatedPrice').textContent = `≈ ${formatNum(est > 0n ? est : 0n, 18)} BNB × ${walletCount}`;
-      $('minOutput').textContent = `≥ ${formatNum(min > 0n ? min * BigInt(walletCount) : 0n, 18)} BNB`;
+      $('estimatedPrice').textContent = `≈ ${formatNum(est > 0n ? est : 0n, sellDec)} ${sellQs} × ${walletCount}`;
+      $('minOutput').textContent = `≥ ${formatNum(min > 0n ? min * BigInt(walletCount) : 0n, sellDec)} ${sellQs}`;
     }
     div.style.display = 'block';
   } catch (e) {
-    console.warn('[PRICE] quoteBuy/quoteSell failed:', e.message);
+    console.warn('[PRICE] quote failed:', e.message);
     if (isPriceRequestCurrent(requestId)) div.style.display = 'none';
   }
 }
@@ -170,12 +174,12 @@ export function switchMode(mode) {
   const amountEl = $('amount');
   if (amountEl && prevMode !== mode) cacheAmountDraft(amountEl.value, prevMode);
   state.tradeMode = mode;
-  const ns = nativeSymbol();
   $('tabBuy').classList.toggle('active', mode === 'buy');
   $('tabSell').classList.toggle('active', mode === 'sell');
   $('tradeBtn').className = 'btn-trade ' + (mode === 'buy' ? 'btn-buy' : 'btn-sell');
   $('tradeBtn').textContent = mode === 'buy' ? '🚀 买入' : '💥 卖出';
-  $('amountLabel').textContent = mode === 'buy' ? `买入数量 (${ns}/钱包)` : '卖出数量 (' + state.tokenInfo.symbol + '/钱包)';
+  const qs = quoteSymbol();
+  $('amountLabel').textContent = mode === 'buy' ? `买入数量 (${qs}/钱包)` : '卖出数量 (' + state.tokenInfo.symbol + '/钱包)';
   $('buyQuickRow').style.display = mode === 'buy' ? 'flex' : 'none';
   $('sellPercentRow').classList.toggle('show', mode === 'sell');
   restoreAmountDraft(mode);
@@ -188,14 +192,15 @@ export function setMax() {
   if (state.tradeMode === 'buy') {
     const sol = isSol();
     const activeIds = sol ? state.solActiveWalletIds : state.activeWalletIds;
-    const balMap = sol ? state.solWalletBalances : state.walletBalances;
-    const nativeDec = sol ? 9 : 18;
-    const reserveStr = sol ? '0.01' : '0.005';
+    const useQuoteBal = !sol && !_isNativeQuote();
+    const balMap = sol ? state.solWalletBalances : (useQuoteBal ? state.quoteBalances : state.walletBalances);
+    const dec = sol ? 9 : state.quoteToken.decimals;
+    const reserveStr = sol ? '0.01' : (_isNativeQuote() ? '0.005' : '0');
     let minBal = null;
     for (const id of activeIds) { const bal = balMap.get(id); if (bal !== undefined && (minBal === null || bal < minBal)) minBal = bal; }
     if (minBal !== null && minBal > 0n) {
-      const reserve = parseUnits(reserveStr, nativeDec);
-      applyAmountValue(normalizeAmount(formatUnits(minBal > reserve ? minBal - reserve : 0n, nativeDec), nativeDec), 'buy');
+      const reserve = parseUnits(reserveStr, dec);
+      applyAmountValue(normalizeAmount(formatUnits(minBal > reserve ? minBal - reserve : 0n, dec), dec), 'buy');
     }
     else applyAmountValue('0', 'buy');
   } else { setPercentAmount(100); }
@@ -320,12 +325,38 @@ export function applyChainUI() {
     if (jitoCol) jitoCol.style.display = 'none';
   }
 
+  // Quote token selector: BSC only
+  const quoteSelect = $('quoteSelect');
+  if (quoteSelect) quoteSelect.style.display = sol ? 'none' : '';
+
   // Address placeholder
   const tokenInput = $('tokenAddress');
   if (tokenInput) tokenInput.placeholder = sol ? 'base58 地址' : '0x...';
 
   // Amount label
   switchMode(state.tradeMode);
+
+  // V4 tab: BSC only
+  const v4Tab = $('pageTabV4');
+  if (v4Tab) {
+    v4Tab.style.display = sol ? 'none' : '';
+    // If on SOL and V4 tab active, switch back to trade
+    if (sol && v4Tab.classList.contains('active')) {
+      v4Tab.classList.remove('active');
+      $('tabV4')?.classList.remove('active');
+      $('pageTabTrade')?.classList.add('active');
+      $('tabTrade')?.classList.add('active');
+    }
+  }
+}
+
+export function switchQuoteToken(symbol) {
+  const qt = QUOTE_TOKENS.find(t => t.symbol === symbol);
+  if (!qt) return;
+  state.quoteToken = { ...qt };
+  chrome.storage.local.set({ quoteToken: symbol });
+  switchMode(state.tradeMode);
+  import('./wallet.js').then(m => m.loadBalances());
 }
 
 // setupEvents 依赖 batch/token，用延迟 import 避免循环依赖
@@ -380,13 +411,17 @@ export function setupEvents() {
     if (t.id === 'cancelQuickBtn') { e.preventDefault(); toggleQuickEdit(false); return; }
   });
 
+  const quoteSelect = $('quoteSelect');
+  if (quoteSelect) quoteSelect.onchange = () => switchQuoteToken(quoteSelect.value);
+
   if (tokenInput) {
     let timer;
     tokenInput.oninput = () => {
       clearTimeout(timer);
       timer = setTimeout(async () => {
+        const addr = tokenInput.value.trim();
         const { detectToken } = await import('./token.js');
-        detectToken(tokenInput.value.trim());
+        detectToken(addr);
       }, 300);
     };
   }

@@ -1,5 +1,5 @@
-import { formatUnits } from 'viem';
-import { FREEDOM_ROUTER, ROUTER_ABI, ERC20_ABI, WBNB, ROUTE } from './constants.js';
+import { formatUnits, parseUnits } from 'viem';
+import { FREEDOM_ROUTER, ROUTER_ABI, ERC20_ABI, ROUTE, ETH_SENTINEL } from './constants.js';
 import { state } from './state.js';
 import { $, isValidAddress, formatNum, escapeHtml } from './utils.js';
 import { showStatus } from './ui.js';
@@ -15,69 +15,41 @@ export async function detectBscToken(addr) {
   showStatus('检测中...', 'pending');
 
   try {
-    const firstWallet = state.walletClients.get(state.activeWalletIds[0]);
-    const userAddr = firstWallet?.address || '0x0000000000000000000000000000000000000000';
+    const tokenEntries = state.activeWalletIds.map(id => ({ id, wc: state.walletClients.get(id) })).filter(e => e.wc);
 
-    const info = await state.publicClient.readContract({
-      address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'getTokenInfo',
-      args: [addr, userAddr]
-    });
+    const [info, symbol, decimals, ...tokenBals] = await Promise.all([
+      state.publicClient.readContract({ address: FREEDOM_ROUTER, abi: ROUTER_ABI, functionName: 'getTokenInfo', args: [addr] }),
+      state.publicClient.readContract({ address: addr, abi: ERC20_ABI, functionName: 'symbol' }).catch(() => '???'),
+      state.publicClient.readContract({ address: addr, abi: ERC20_ABI, functionName: 'decimals' }).catch(() => 18),
+      ...tokenEntries.map(e =>
+        state.publicClient.readContract({ address: addr, abi: ERC20_ABI, functionName: 'balanceOf', args: [e.wc.address] }).catch(() => 0n)
+      )
+    ]);
 
     let totalBalance = 0n;
     state.tokenBalances.clear();
-    const tokenEntries = state.activeWalletIds.map(id => ({ id, wc: state.walletClients.get(id) })).filter(e => e.wc);
-    const tokenBals = await Promise.all(tokenEntries.map(e =>
-      state.publicClient.readContract({ address: addr, abi: ERC20_ABI, functionName: 'balanceOf', args: [e.wc.address] }).catch(() => 0n)
-    ));
     tokenEntries.forEach((e, i) => {
       state.tokenBalances.set(e.id, tokenBals[i]);
       totalBalance += tokenBals[i];
     });
 
-    state.tokenInfo = { decimals: info.decimals, symbol: info.symbol || '???', balance: totalBalance, address: addr };
-    $('tokenBalanceDisplay').textContent = parseFloat(formatUnits(totalBalance, info.decimals)).toFixed(4);
+    state.tokenInfo = { decimals, symbol: symbol || '???', balance: totalBalance, address: addr };
+    $('tokenBalanceDisplay').textContent = parseFloat(formatUnits(totalBalance, decimals)).toFixed(4);
 
     const route = Number(info.routeSource);
     const isFour = route >= ROUTE.FOUR_INTERNAL_BNB && route <= ROUTE.FOUR_EXTERNAL;
     const isFlap = route === ROUTE.FLAP_BONDING || route === ROUTE.FLAP_BONDING_SELL || route === ROUTE.FLAP_DEX;
     const hasPool = route !== ROUTE.NONE;
 
-    let rBNB, rToken;
-    if (info.isInternal) {
-      rBNB = info.tmFunds;
-      rToken = info.tmOffers;
-    } else if (isFlap) {
-      rBNB = info.flapReserve;
-      rToken = info.flapCirculatingSupply;
-    } else {
-      const tokenLower = addr.toLowerCase() < WBNB.toLowerCase();
-      rBNB = tokenLower ? info.pairReserve1 : info.pairReserve0;
-      rToken = tokenLower ? info.pairReserve0 : info.pairReserve1;
-    }
-
     state.lpInfo = {
       hasLP: hasPool,
       routeSource: route,
       approveTarget: info.approveTarget,
       isInternal: info.isInternal,
-      tmQuote: info.tmQuote,
-      reserveBNB: rBNB,
-      reserveToken: rToken,
       tmFunds: info.tmFunds,
       tmMaxFunds: info.tmMaxFunds,
       tmOffers: info.tmOffers,
-      tmTradingFeeRate: info.tmTradingFeeRate,
-      pair: info.pair,
-      isTaxToken: info.isTaxToken,
-      taxFeeRate: info.taxFeeRate,
-      // Flap 字段
       flapStatus: info.flapStatus,
-      flapReserve: info.flapReserve,
-      flapCirculatingSupply: info.flapCirculatingSupply,
-      flapPrice: info.flapPrice,
-      flapTaxRate: info.flapTaxRate,
-      flapProgress: info.flapProgress,
-      flapPool: info.flapPool,
     };
 
     const badge = $('tokenNameBadge');
@@ -124,9 +96,31 @@ export async function detectBscToken(addr) {
 
     updateBalanceHint();
     updatePrice();
+    if (hasPool) fetchTokenPrice(addr, decimals);
   } catch (e) {
     console.error(e);
     showStatus('检测失败', 'error');
+  }
+}
+
+async function fetchTokenPrice(tokenAddr, decimals) {
+  try {
+    const oneToken = 10n ** BigInt(decimals);
+    const qAddr = state.quoteToken.address;
+    const qDec = state.quoteToken.decimals;
+    const qs = state.quoteToken.symbol;
+    const priceWei = await state.publicClient.readContract({
+      address: FREEDOM_ROUTER, abi: ROUTER_ABI,
+      functionName: 'quote', args: [tokenAddr, oneToken, qAddr]
+    });
+    const price = parseFloat(formatUnits(priceWei, qDec));
+    const tag = $('tokenPriceTag');
+    if (tag) {
+      tag.textContent = `${price.toPrecision(4)} ${qs}`;
+      tag.style.display = '';
+    }
+  } catch (e) {
+    console.warn('[PRICE] token price failed:', e.message);
   }
 }
 
@@ -153,19 +147,18 @@ function showBscLPInfo(info, route) {
     ? (isFlapBonding ? '🦋 Flap 内盘' : '🦋 Flap DEX')
     : (info.isInternal ? '🔥 Four 内盘' : '🥞 PCS 外盘');
   const poolColor = info.isInternal || isFlapBonding ? 'var(--red)' : 'var(--accent)';
-  const quoteVal = state.lpInfo.reserveBNB;
-  const tokenVal = state.lpInfo.reserveToken;
-  const quoteLabel = isFlap ? '储备' : 'BNB 储备';
-  const quoteDec = isFlap ? 18 : 18;
 
-  let extra = '';
-  if (isFlap && info.flapProgress) {
-    const pct = (Number(info.flapProgress) / 1e16).toFixed(1);
-    extra = `<div class="lp-res-item"><div class="lbl">进度</div><div class="val" style="color:var(--yellow);">${pct}%</div></div>`;
-  }
-  if (isFlap && info.flapTaxRate > 0n) {
-    const taxPct = (Number(info.flapTaxRate) / 100).toFixed(1);
-    extra += `<div class="lp-res-item"><div class="lbl">税率</div><div class="val" style="color:var(--red);">${taxPct}%</div></div>`;
+  let reserveHtml = '';
+  if (info.isInternal) {
+    reserveHtml = `
+      <div class="lp-res-item">
+        <div class="lbl" style="text-transform:uppercase;">BNB 储备</div>
+        <div class="val" style="color:var(--yellow);">${formatNum(info.tmFunds, 18)}</div>
+      </div>
+      <div class="lp-res-item">
+        <div class="lbl" title="${escapeHtml(state.tokenInfo.symbol)}" style="color:#00ffaa;font-weight:700;">${escapeHtml(state.tokenInfo.symbol)} 储备</div>
+        <div class="val" style="color:var(--accent);">${formatNum(info.tmOffers, state.tokenInfo.decimals)}</div>
+      </div>`;
   }
 
   div.style.display = 'block';
@@ -174,17 +167,7 @@ function showBscLPInfo(info, route) {
       <span class="type" style="color:var(--text2);">${poolType}</span>
       <span class="status" style="color:${poolColor};">✓ 已检测</span>
     </div>
-    <div class="lp-reserves">
-      <div class="lp-res-item">
-        <div class="lbl" style="text-transform:uppercase;">${quoteLabel}</div>
-        <div class="val" style="color:var(--yellow);">${formatNum(quoteVal, quoteDec)}</div>
-      </div>
-      <div class="lp-res-item">
-        <div class="lbl" title="${escapeHtml(state.tokenInfo.symbol)}" style="color:#00ffaa;font-weight:700;">${escapeHtml(state.tokenInfo.symbol)} ${isFlap ? '流通量' : '储备'}</div>
-        <div class="val" style="color:var(--accent);">${formatNum(tokenVal, state.tokenInfo.decimals)}</div>
-      </div>
-      ${extra}
-    </div>
+    <div class="lp-reserves">${reserveHtml}</div>
   `;
 }
 
@@ -193,6 +176,7 @@ export function clearBscTokenDisplay() {
   state.lpInfo = { hasLP: false, isInternal: false, routeSource: ROUTE.NONE };
   $('tokenBalanceDisplay').textContent = '-';
   const badge = $('tokenNameBadge'); if (badge) badge.classList.remove('show');
+  const priceTag = $('tokenPriceTag'); if (priceTag) priceTag.style.display = 'none';
   const lpDiv = $('lpInfo'); if (lpDiv) lpDiv.style.display = 'none';
   const priceDiv = $('priceInfo'); if (priceDiv) priceDiv.style.display = 'none';
 }

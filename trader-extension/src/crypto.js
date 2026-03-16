@@ -3,7 +3,9 @@
 
 function send(action, data = {}) {
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Service worker 无响应')), 30000);
     chrome.runtime.sendMessage({ action, ...data }, (response) => {
+      clearTimeout(timer);
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
       } else if (response?.error) {

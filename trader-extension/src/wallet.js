@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $ } from './utils.js';
+import { $, withTimeout } from './utils.js';
 import { loadBscBalances, renderBscWalletSelector } from './wallet-bsc.js';
 import { loadSolBalances, renderSolWalletSelector } from './wallet-sol.js';
 
@@ -40,12 +40,12 @@ export async function loadBalances() {
   const requestId = ++_loadBalancesRequestId;
   const isCurrent = () => requestId === _loadBalancesRequestId && contextKey === getBalanceContextKey();
 
-  const promise = (async () => {
+  const promise = withTimeout((async () => {
     const applied = state.currentChain === 'sol'
       ? await loadSolBalances(isCurrent)
       : await loadBscBalances(isCurrent);
     if (applied && isCurrent()) updateBalanceHint();
-  })();
+  })(), 15000).catch(e => console.warn('[BALANCE]', e.message));
   _loadBalancesPromise = promise;
   _loadBalancesContextKey = contextKey;
 

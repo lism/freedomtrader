@@ -17,6 +17,9 @@ const JITO_BLOCK_ENGINES = [
   'https://slc.mainnet.block-engine.jito.wtf',
 ];
 
+// Restrict session storage to background only — prevent extension pages from reading ft_pw
+chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+
 // ==================== Crypto state ====================
 
 const SALT_KEY = 'ft_salt';
@@ -25,6 +28,7 @@ const PW_HASH_KEY = 'ft_pw_hash';
 
 let cachedKey = null;
 let unlockTime = 0;
+let cachedPassword = null; // survives via session storage for SW restart
 
 // Wallet state — private keys never leave this scope
 const bscClients = new Map();   // walletId -> { client, account }
@@ -73,17 +77,42 @@ async function hashPassword(password) {
 }
 
 async function checkExpiry() {
+  // Restore from session storage if SW was restarted
+  if (!cachedKey) await restoreSession();
   if (!cachedKey) return false;
   const config = await chrome.storage.local.get([LOCK_DUR_KEY]);
-  const dur = (config[LOCK_DUR_KEY] || 30) * 60 * 1000;
-  if (Date.now() - unlockTime > dur) {
-    cachedKey = null;
-    unlockTime = 0;
-    bscClients.clear();
-    solKeypairs.clear();
+  const dur = (config[LOCK_DUR_KEY] || 240) * 60 * 1000;
+  const now = Date.now();
+  if (now - unlockTime > dur) {
+    await clearSession();
     return false;
   }
+  // Reset activity timer — "N hours of inactivity" not "N hours since unlock"
+  unlockTime = now;
+  chrome.storage.session.set({ ft_ut: now });
   return true;
+}
+
+async function saveSession(password) {
+  cachedPassword = password;
+  await chrome.storage.session.set({ ft_pw: password, ft_ut: Date.now() });
+}
+
+async function restoreSession() {
+  const s = await chrome.storage.session.get(['ft_pw', 'ft_ut']);
+  if (!s.ft_pw) return;
+  cachedKey = await deriveKey(s.ft_pw);
+  cachedPassword = s.ft_pw;
+  unlockTime = s.ft_ut || Date.now();
+}
+
+async function clearSession() {
+  cachedKey = null;
+  cachedPassword = null;
+  unlockTime = 0;
+  bscClients.clear();
+  solKeypairs.clear();
+  await chrome.storage.session.remove(['ft_pw', 'ft_ut']);
 }
 
 async function decryptCiphertext(ciphertext) {
@@ -156,6 +185,7 @@ const handlers = {
     await chrome.storage.local.set({ [PW_HASH_KEY]: hash });
     cachedKey = await deriveKey(password);
     unlockTime = Date.now();
+    await saveSession(password);
     return { ok: true };
   },
 
@@ -166,14 +196,12 @@ const handlers = {
     if (hash !== stored[PW_HASH_KEY]) return { ok: false };
     cachedKey = await deriveKey(password);
     unlockTime = Date.now();
+    await saveSession(password);
     return { ok: true };
   },
 
   async lock() {
-    cachedKey = null;
-    unlockTime = 0;
-    bscClients.clear();
-    solKeypairs.clear();
+    await clearSession();
     return { ok: true };
   },
 
@@ -328,6 +356,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // ==================== Side panel & contract detection ====================
 
+chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' });
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {

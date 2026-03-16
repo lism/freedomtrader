@@ -81,7 +81,7 @@ function setWalletSectionEnabled(enabled) {
 async function handleSetPassword() {
   const pw = $('newPw').value;
   const confirm = $('confirmPw').value;
-  if (!pw || pw.length < 6) { showToast('密码至少6位', 'error'); return; }
+  if (!pw) { showToast('请输入密码', 'error'); return; }
   if (pw !== confirm) { showToast('两次密码不一致', 'error'); return; }
   await setPassword(pw);
   unlocked = true;
