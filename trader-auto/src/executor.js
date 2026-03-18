@@ -193,4 +193,145 @@ export class BscExecutor {
   formatToken(amountWei, decimals) {
     return formatUnits(amountWei, decimals);
   }
+
+  // ========== 合约安全检查 ==========
+
+  async checkContractSafety(token) {
+    const issues = [];
+    const checks = {};
+
+    try {
+      // 1. 检查合约是否有 owner 函数
+      try {
+        const owner = await this.publicClient.readContract({
+          address: token,
+          abi: ERC20_ABI,
+          functionName: 'owner',
+        });
+        checks.hasOwner = true;
+        checks.owner = owner;
+        if (owner !== ZERO_ADDR) {
+          issues.push('合约拥有 owner，存在中心化风险');
+        }
+      } catch (e) {
+        checks.hasOwner = false;
+      }
+
+      // 2. 检查是否有 mint 功能
+      try {
+        const hasMint = await this.publicClient.readContract({
+          address: token,
+          abi: ERC20_ABI,
+          functionName: 'mint',
+          args: ['0x0000000000000000000000000000000000000001', 1n],
+        });
+        checks.hasMint = true;
+        issues.push('合约存在 mint 功能，可无限增发');
+      } catch (e) {
+        checks.hasMint = false;
+      }
+
+      // 3. 检查是否是黑/白名单合约
+      try {
+        const isBlacklisted = await this.publicClient.readContract({
+          address: token,
+          abi: ERC20_ABI,
+          functionName: 'isBlacklisted',
+          args: [this.address],
+        });
+        checks.isBlacklisted = isBlacklisted;
+        if (isBlacklisted) {
+          issues.push('地址被加入黑名单，无法交易');
+        }
+      } catch (e) {
+        checks.isBlacklisted = false;
+      }
+
+    } catch (error) {
+      console.warn('[Safety Check] 检查失败:', error.message);
+    }
+
+    return { checks, issues, isSafe: issues.length === 0 };
+  }
+
+  async getHolderDistribution(token) {
+    try {
+      const totalSupply = await this.publicClient.readContract({
+        address: token,
+        abi: ERC20_ABI,
+        functionName: 'totalSupply',
+      });
+
+      // 获取前 20 大持有者（简化版，实际需要通过事件或子图）
+      // 这里返回 placeholder，因为需要更复杂的数据源
+      return {
+        totalSupply,
+        top10Percentage: 0n,
+        holderCount: 0,
+      };
+    } catch (error) {
+      console.warn('[Holder Check] 获取失败:', error.message);
+      return null;
+    }
+  }
+
+  async validateToken(token, creator) {
+    const errors = [];
+    const warnings = [];
+
+    // 1. 检查流动性
+    const info = await this.getTokenInfo(token);
+    const liquidity = this.getLiquidityBnb(info, token);
+    const minLiqWei = BigInt(Math.floor(this.config.minLiquidityBnb * 1e18));
+    if (liquidity < minLiqWei) {
+      errors.push(`流动性不足：${formatUnits(liquidity, 18)} BNB < ${this.config.minLiquidityBnb} BNB`);
+    }
+
+    // 2. 检查税收
+    const taxPercent = Number(info.taxFeeRate || 0n) / 100;
+    if (taxPercent > this.config.maxTaxPercent) {
+      errors.push(`税收过高：${taxPercent}% > ${this.config.maxTaxPercent}%`);
+    }
+
+    // 3. 检查合约是否拥有 owner（高风险）
+    try {
+      const owner = await this.publicClient.readContract({
+        address: token,
+        abi: ERC20_ABI,
+        functionName: 'owner',
+      });
+      if (owner !== ZERO_ADDR) {
+        errors.push(`合约拥有 owner（中心化风险）：${owner}`);
+      }
+    } catch (e) {
+      // 没有 owner 函数，可能是安全的
+    }
+
+    // 4. 检查合约是否有 mint 功能（可无限增发）
+    try {
+      await this.publicClient.readContract({
+        address: token,
+        abi: ERC20_ABI,
+        functionName: 'mint',
+        args: ['0x0000000000000000000000000000000000000001', 1n],
+      });
+      errors.push(`合约存在 mint 功能（可无限增发）`);
+    } catch (e) {
+      // 没有 mint 函数，可能是安全的
+    }
+
+    // 5. 检查创建者白名单
+    if (creator) {
+      const creatorLower = creator.toLowerCase();
+      if (this.config.creatorBlocklist && this.config.creatorBlocklist.map(c => c.toLowerCase()).includes(creatorLower)) {
+        errors.push(`创建者在黑名单：${creator}`);
+      }
+      if (this.config.creatorWhitelist && this.config.creatorWhitelist.length > 0 &&
+          !this.config.creatorWhitelist.map(c => c.toLowerCase()).includes(creatorLower)) {
+        warnings.push(`创建者不在白名单：${creator}`);
+      }
+    }
+
+    return { errors, warnings, isValid: errors.length === 0 };
+  }
 }
